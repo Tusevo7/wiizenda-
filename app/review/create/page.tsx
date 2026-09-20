@@ -1,1162 +1,953 @@
 
 'use client'
 
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import {
-  Camera,
-  ChevronLeft,
-  ChevronRight,
-  FlipHorizontal2,
-  Image as ImageIcon,
-  Sparkles,
-  Video,
+  ArrowLeft,
+  Check,
+  MapPin,
+  Music2,
+  Star,
+  Volume2,
+  VolumeX,
   X,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 
-const filters = [
+type Sound = {
+  id: string
+  name: string
+  category: string
+  url: string
+}
+
+type StoredVideo = {
+  blob: Blob
+  mimeType: string
+}
+
+const sounds: Sound[] = [
   {
-    id: 'original',
-    name: 'Original',
-    className: '',
+    id: 'angola-vibes',
+    name: 'Angola Vibes',
+    category: 'África',
+    url: '/sounds/angola-vibes.mp3',
   },
   {
-    id: 'warm',
-    name: 'Warm',
-    className: 'sepia-[0.18] saturate-[1.2]',
+    id: 'african-sunset',
+    name: 'African Sunset',
+    category: 'Relax',
+    url: '/sounds/african-sunset.mp3',
   },
   {
-    id: 'tropical',
-    name: 'Tropical',
-    className: 'saturate-[1.45] contrast-[1.08]',
+    id: 'travel-africa',
+    name: 'Travel Africa',
+    category: 'Viagem',
+    url: '/sounds/travel-africa.mp3',
   },
   {
-    id: 'cool',
-    name: 'Cool',
-    className: 'hue-rotate-[12deg] saturate-[0.9]',
-  },
-  {
-    id: 'vintage',
-    name: 'Vintage',
-    className: 'sepia-[0.4] contrast-[0.9] saturate-[0.8]',
-  },
-  {
-    id: 'bw',
-    name: 'P&B',
-    className: 'grayscale',
-  },
-  {
-    id: 'dramatic',
-    name: 'Drama',
-    className: 'contrast-[1.35] saturate-[1.15]',
+    id: 'luanda-nights',
+    name: 'Luanda Nights',
+    category: 'Em alta',
+    url: '/sounds/luanda-nights.mp3',
   },
 ]
 
-const MAX_VIDEO_SECONDS = 60
+async function getStoredVideo(): Promise<StoredVideo | null> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined') {
+      resolve(null)
+      return
+    }
 
-const VIDEO_DB_NAME = 'wizenda-review'
-const VIDEO_STORE_NAME = 'videos'
-
-function openVideoDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
     const request = indexedDB.open(
-      VIDEO_DB_NAME,
+      'wizenda-review',
       1,
     )
 
-    request.onupgradeneeded = () => {
-      const db = request.result
+    request.onerror = () => {
+      console.error(
+        'Erro ao abrir IndexedDB:',
+        request.error,
+      )
 
-      if (
-        !db.objectStoreNames.contains(
-          VIDEO_STORE_NAME,
-        )
-      ) {
-        db.createObjectStore(
-          VIDEO_STORE_NAME,
-        )
-      }
+      resolve(null)
     }
 
     request.onsuccess = () => {
-      resolve(request.result)
-    }
+      const db = request.result
 
-    request.onerror = () => {
-      reject(request.error)
+      try {
+        const transaction = db.transaction(
+          'videos',
+          'readonly',
+        )
+
+        const store =
+          transaction.objectStore('videos')
+
+        const getRequest =
+          store.get('current')
+
+        getRequest.onsuccess = () => {
+          const result = getRequest.result
+
+          if (result instanceof Blob) {
+            resolve({
+              blob: result,
+              mimeType:
+                result.type || 'video/webm',
+            })
+
+            db.close()
+            return
+          }
+
+          if (
+            result &&
+            result.blob instanceof Blob
+          ) {
+            resolve({
+              blob: result.blob,
+              mimeType:
+                result.mimeType ||
+                result.blob.type ||
+                'video/webm',
+            })
+
+            db.close()
+            return
+          }
+
+          console.error(
+            'Vídeo não encontrado no IndexedDB.',
+            result,
+          )
+
+          resolve(null)
+          db.close()
+        }
+
+        getRequest.onerror = () => {
+          console.error(
+            'Erro ao ler vídeo do IndexedDB:',
+            getRequest.error,
+          )
+
+          resolve(null)
+          db.close()
+        }
+      } catch (error) {
+        console.error(
+          'Erro ao acessar vídeo:',
+          error,
+        )
+
+        resolve(null)
+
+        try {
+          db.close()
+        } catch {
+          // Ignorar
+        }
+      }
     }
   })
 }
 
-async function saveVideoBlob(
-  blob: Blob,
-) {
-  const db =
-    await openVideoDatabase()
-
-  return new Promise<void>(
-    (resolve, reject) => {
-      const transaction =
-        db.transaction(
-          VIDEO_STORE_NAME,
-          'readwrite',
-        )
-
-      transaction
-        .objectStore(
-          VIDEO_STORE_NAME,
-        )
-        .put(blob, 'current')
-
-      transaction.oncomplete = () => {
-        db.close()
-        resolve()
-      }
-
-      transaction.onerror = () => {
-        db.close()
-        reject(transaction.error)
-      }
-    },
-  )
-}
-
-async function clearVideoBlob() {
-  try {
-    const db =
-      await openVideoDatabase()
-
-    await new Promise<void>(
-      (resolve, reject) => {
-        const transaction =
-          db.transaction(
-            VIDEO_STORE_NAME,
-            'readwrite',
-          )
-
-        transaction
-          .objectStore(
-            VIDEO_STORE_NAME,
-          )
-          .delete('current')
-
-        transaction.oncomplete = () =>
-          resolve()
-
-        transaction.onerror = () =>
-          reject(transaction.error)
-      },
-    )
-
-    db.close()
-  } catch (error) {
-    console.error(
-      'Erro ao limpar vídeo temporário:',
-      error,
-    )
-  }
-}
-
-export default function CreateReviewPage() {
+export default function CreateReviewPublishPage() {
   const router = useRouter()
+  const supabase = createClient()
 
-  const videoRef =
-    useRef<HTMLVideoElement | null>(
-      null,
-    )
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
-  const canvasRef =
-    useRef<HTMLCanvasElement | null>(
-      null,
-    )
+  const [mediaType, setMediaType] =
+    useState<'image' | 'video'>('image')
 
-  const streamRef =
-    useRef<MediaStream | null>(
-      null,
-    )
+  const [imageUrl, setImageUrl] =
+    useState<string | null>(null)
 
-  const mediaRecorderRef =
-    useRef<MediaRecorder | null>(
-      null,
-    )
+  const [videoUrl, setVideoUrl] =
+    useState<string | null>(null)
 
-  const recordedChunksRef =
-    useRef<Blob[]>([])
+  const [videoBlob, setVideoBlob] =
+    useState<Blob | null>(null)
 
-  const recordingTimerRef =
-    useRef<ReturnType<
-      typeof setInterval
-    > | null>(null)
+  const [caption, setCaption] =
+    useState('')
 
-  const [cameraReady, setCameraReady] =
+  const [location, setLocation] =
+    useState('')
+
+  const [rating, setRating] =
+    useState(0)
+
+  const [selectedSound, setSelectedSound] =
+    useState<Sound | null>(null)
+
+  const [showSounds, setShowSounds] =
     useState(false)
 
-  const [facingMode, setFacingMode] =
-    useState<
-      'user' | 'environment'
-    >('environment')
-
-  const [selectedFilter, setSelectedFilter] =
-    useState('original')
-
-  const [capturedImage, setCapturedImage] =
-    useState<string | null>(null)
-
-  const [capturedVideo, setCapturedVideo] =
-    useState<string | null>(null)
-
-  const [cameraError, setCameraError] =
-    useState<string | null>(null)
-
-  const [captureMode, setCaptureMode] =
-    useState<
-      'photo' | 'video'
-    >('photo')
-
-  const [isRecording, setIsRecording] =
+  const [showLocation, setShowLocation] =
     useState(false)
 
-  const [
-    recordingSeconds,
-    setRecordingSeconds,
-  ] = useState(0)
+  const [showRating, setShowRating] =
+    useState(false)
 
-  const currentFilter =
-    filters.find(
-      (filter) =>
-        filter.id === selectedFilter,
-    ) ?? filters[0]
+  const [originalAudioEnabled, setOriginalAudioEnabled] =
+    useState(true)
+
+  const [saving, setSaving] =
+    useState(false)
+
+  const [error, setError] =
+    useState('')
 
   useEffect(() => {
-    startCamera()
+    let active = true
+    let objectUrl: string | null = null
+
+    async function loadMedia() {
+      const type =
+        sessionStorage.getItem(
+          'wizenda-review-media-type',
+        )
+
+      if (type === 'video') {
+        setMediaType('video')
+
+        const storedVideo =
+          await getStoredVideo()
+
+        if (!active) {
+          return
+        }
+
+        if (!storedVideo) {
+          setError(
+            'Não foi possível recuperar o vídeo gravado.',
+          )
+
+          return
+        }
+
+        objectUrl = URL.createObjectURL(
+          storedVideo.blob,
+        )
+
+        setVideoBlob(storedVideo.blob)
+        setVideoUrl(objectUrl)
+
+        return
+      }
+
+      const storedImage =
+        sessionStorage.getItem(
+          'wizenda-review-image',
+        )
+
+      if (storedImage) {
+        setMediaType('image')
+        setImageUrl(storedImage)
+      }
+    }
+
+    loadMedia()
 
     return () => {
-      stopCamera()
-      stopRecordingTimer()
+      active = false
 
-      if (
-        capturedVideo
-      ) {
-        URL.revokeObjectURL(
-          capturedVideo,
-        )
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl)
       }
     }
-  }, [facingMode])
+  }, [])
 
-  async function startCamera() {
-    stopCamera()
+  function toggleOriginalAudio() {
+    const next =
+      !originalAudioEnabled
+
+    setOriginalAudioEnabled(next)
+
+    if (videoRef.current) {
+      videoRef.current.muted = !next
+    }
+  }
+
+  function selectSound(sound: Sound) {
+    setSelectedSound(sound)
+    setShowSounds(false)
+
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.currentTime = 0
+    }
+
+    setTimeout(() => {
+      audioRef.current?.play().catch(() => {
+        // O navegador pode bloquear autoplay.
+      })
+    }, 100)
+  }
+
+  function removeSound() {
+    setSelectedSound(null)
+
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.currentTime = 0
+    }
+  }
+
+  async function publish() {
+    if (saving) {
+      return
+    }
+
+    setSaving(true)
+    setError('')
 
     try {
-      setCameraError(null)
-      setCameraReady(false)
+      const {
+        data: {
+          user,
+        },
+        error: authError,
+      } = await supabase.auth.getUser()
 
-      if (
-        !navigator.mediaDevices ||
-        !navigator.mediaDevices
-          .getUserMedia
-      ) {
-        setCameraError(
-          'Este navegador não suporta acesso à câmera.',
+      if (authError || !user) {
+        throw new Error(
+          'Precisas iniciar sessão para publicar.',
         )
-
-        return
       }
 
-      const stream =
-        await navigator.mediaDevices.getUserMedia(
-          {
-            video: {
-              facingMode,
-              width: {
-                ideal: 1080,
-              },
-              height: {
-                ideal: 1920,
-              },
-            },
+      let mediaUrl = ''
+      let uploadedPath = ''
 
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
-            },
-          },
-        )
-
-      const videoTracks =
-        stream.getVideoTracks()
-
-      const audioTracks =
-        stream.getAudioTracks()
-
-      console.log(
-        '🎥 Faixas de vídeo:',
-        videoTracks,
-      )
-
-      console.log(
-        '🎤 Faixas de áudio:',
-        audioTracks,
-      )
-
-      if (
-        videoTracks.length === 0
-      ) {
-        stream
-          .getTracks()
-          .forEach((track) =>
-            track.stop(),
+      if (mediaType === 'image') {
+        if (!imageUrl) {
+          throw new Error(
+            'Imagem não encontrada.',
           )
-
-        setCameraError(
-          'A câmera não foi encontrada.',
-        )
-
-        return
-      }
-
-      if (
-        audioTracks.length === 0
-      ) {
-        stream
-          .getTracks()
-          .forEach((track) =>
-            track.stop(),
-          )
-
-        setCameraError(
-          'O microfone não foi autorizado. Permite o acesso ao microfone e tenta novamente.',
-        )
-
-        return
-      }
-
-      streamRef.current = stream
-
-      if (videoRef.current) {
-        videoRef.current.srcObject =
-          stream
-
-        await videoRef.current.play()
-      }
-
-      setCameraReady(true)
-    } catch (error) {
-      console.error(
-        'Erro ao iniciar câmera:',
-        error,
-      )
-
-      setCameraReady(false)
-
-      setCameraError(
-        'Não foi possível aceder à câmera e ao microfone. Verifica as permissões do navegador.',
-      )
-    }
-  }
-
-  function stopCamera() {
-    if (streamRef.current) {
-      streamRef.current
-        .getTracks()
-        .forEach((track) =>
-          track.stop(),
-        )
-
-      streamRef.current = null
-    }
-
-    setCameraReady(false)
-  }
-
-  function switchCamera() {
-    if (isRecording) {
-      return
-    }
-
-    setFacingMode(
-      (current) =>
-        current === 'environment'
-          ? 'user'
-          : 'environment',
-    )
-  }
-
-  function capturePhoto() {
-    const video =
-      videoRef.current
-
-    const canvas =
-      canvasRef.current
-
-    if (
-      !video ||
-      !canvas ||
-      !cameraReady
-    ) {
-      return
-    }
-
-    const context =
-      canvas.getContext('2d')
-
-    if (!context) {
-      return
-    }
-
-    canvas.width =
-      video.videoWidth
-
-    canvas.height =
-      video.videoHeight
-
-    context.drawImage(
-      video,
-      0,
-      0,
-      canvas.width,
-      canvas.height,
-    )
-
-    const image =
-      canvas.toDataURL(
-        'image/jpeg',
-        0.9,
-      )
-
-    setCapturedImage(image)
-    setCapturedVideo(null)
-
-    stopCamera()
-  }
-
-  function getSupportedVideoMimeType() {
-    const types = [
-      'video/webm;codecs=vp9,opus',
-      'video/webm;codecs=vp8,opus',
-      'video/webm',
-      'video/mp4',
-    ]
-
-    return (
-      types.find((type) =>
-        MediaRecorder.isTypeSupported(
-          type,
-        ),
-      ) ?? ''
-    )
-  }
-
-  function startRecording() {
-    const stream =
-      streamRef.current
-
-    if (
-      !stream ||
-      !cameraReady ||
-      isRecording
-    ) {
-      return
-    }
-
-    if (
-      typeof MediaRecorder ===
-      'undefined'
-    ) {
-      setCameraError(
-        'Este navegador não suporta gravação de vídeo.',
-      )
-
-      return
-    }
-
-    const videoTracks =
-      stream.getVideoTracks()
-
-    const audioTracks =
-      stream.getAudioTracks()
-
-    console.log(
-      '🎥 Faixas de vídeo para gravação:',
-      videoTracks,
-    )
-
-    console.log(
-      '🎤 Faixas de áudio para gravação:',
-      audioTracks,
-    )
-
-    if (
-      videoTracks.length === 0
-    ) {
-      setCameraError(
-        'A câmera não está disponível.',
-      )
-
-      return
-    }
-
-    if (
-      audioTracks.length === 0
-    ) {
-      setCameraError(
-        'O microfone não está disponível. Permite o acesso ao microfone no navegador e tenta novamente.',
-      )
-
-      return
-    }
-
-    const recordingStream =
-      new MediaStream([
-        videoTracks[0],
-        audioTracks[0],
-      ])
-
-    const mimeType =
-      getSupportedVideoMimeType()
-
-    console.log(
-      '🎬 Formato de gravação:',
-      mimeType || 'default',
-    )
-
-    try {
-      const recorder =
-        mimeType
-          ? new MediaRecorder(
-              recordingStream,
-              {
-                mimeType,
-                audioBitsPerSecond:
-                  128000,
-                videoBitsPerSecond:
-                  2500000,
-              },
-            )
-          : new MediaRecorder(
-              recordingStream,
-              {
-                audioBitsPerSecond:
-                  128000,
-                videoBitsPerSecond:
-                  2500000,
-              },
-            )
-
-      recordedChunksRef.current =
-        []
-
-      recorder.ondataavailable =
-        (event) => {
-          console.log(
-            '📦 Dados recebidos:',
-            event.data.size,
-          )
-
-          if (
-            event.data.size > 0
-          ) {
-            recordedChunksRef.current.push(
-              event.data,
-            )
-          }
         }
 
-      recorder.onerror = (
-        event,
-      ) => {
-        console.error(
-          '❌ Erro MediaRecorder:',
-          event,
-        )
+        const response =
+          await fetch(imageUrl)
 
-        setCameraError(
-          'Ocorreu um erro durante a gravação.',
-        )
-      }
+        const blob =
+          await response.blob()
 
-      recorder.onstop =
-        async () => {
-          const finalType =
-            recorder.mimeType ||
-            mimeType ||
-            'video/webm'
+        const path =
+          `${user.id}/${crypto.randomUUID()}.jpg`
 
-          console.log(
-            '🎞️ Tipo final:',
-            finalType,
-          )
-
-          const blob =
-            new Blob(
-              recordedChunksRef.current,
-              {
-                type: finalType,
-              },
-            )
-
-          console.log(
-            '📦 Vídeo final:',
-            blob.size,
-            'bytes',
-          )
-
-          if (blob.size === 0) {
-            setCameraError(
-              'A gravação ficou vazia. Tenta novamente.',
-            )
-
-            return
-          }
-
-          try {
-            await saveVideoBlob(
+        const { error: uploadError } =
+          await supabase.storage
+            .from('community-media')
+            .upload(
+              path,
               blob,
+              {
+                contentType:
+                  blob.type || 'image/jpeg',
+                upsert: false,
+              },
             )
 
-            const previewUrl =
-              URL.createObjectURL(
-                blob,
-              )
-
-            setCapturedVideo(
-              previewUrl,
-            )
-
-            setCapturedImage(null)
-
-            sessionStorage.setItem(
-              'wizenda-review-media-type',
-              'video',
-            )
-
-            sessionStorage.setItem(
-              'wizenda-review-filter',
-              selectedFilter,
-            )
-
-            stopCamera()
-          } catch (error) {
-            console.error(
-              'Erro ao guardar vídeo:',
-              error,
-            )
-
-            setCameraError(
-              'Não foi possível preparar o vídeo. Tenta novamente.',
-            )
-          }
+        if (uploadError) {
+          throw uploadError
         }
 
-      mediaRecorderRef.current =
-        recorder
+        uploadedPath = path
 
-      recorder.start(250)
+        const {
+          data: publicData,
+        } = supabase.storage
+          .from('community-media')
+          .getPublicUrl(path)
 
-      setIsRecording(true)
-      setRecordingSeconds(0)
+        mediaUrl =
+          publicData.publicUrl
+      } else {
+        if (!videoBlob) {
+          throw new Error(
+            'Vídeo não encontrado.',
+          )
+        }
 
-      recordingTimerRef.current =
-        setInterval(() => {
-          setRecordingSeconds(
-            (current) => {
-              const next =
-                current + 1
+        const extension =
+          videoBlob.type.includes('mp4')
+            ? 'mp4'
+            : 'webm'
 
-              if (
-                next >=
-                MAX_VIDEO_SECONDS
-              ) {
-                stopRecording()
-              }
+        const path =
+          `${user.id}/${crypto.randomUUID()}.${extension}`
 
-              return next
-            },
+        const { error: uploadError } =
+          await supabase.storage
+            .from('community-media')
+            .upload(
+              path,
+              videoBlob,
+              {
+                contentType:
+                  videoBlob.type ||
+                  'video/webm',
+                upsert: false,
+              },
             )
-          },
-          1000,
-        )
-    } catch (error) {
-      console.error(
-        '❌ Erro ao iniciar gravação:',
-        error,
+
+        if (uploadError) {
+          throw uploadError
+        }
+
+        uploadedPath = path
+
+        const {
+          data: publicData,
+        } = supabase.storage
+          .from('community-media')
+          .getPublicUrl(path)
+
+        mediaUrl =
+          publicData.publicUrl
+      }
+
+      const { data: profile } =
+        await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .maybeSingle()
+
+      const postType =
+        profile?.role === 'agency'
+          ? 'agency'
+          : 'traveler'
+
+      const { error: insertError } =
+        await supabase
+          .from('community_posts')
+          .insert({
+            user_id: user.id,
+            post_type: postType,
+            media_type: mediaType,
+            media_url: mediaUrl,
+            caption:
+              caption.trim() || null,
+            location:
+              location.trim() || null,
+            rating:
+              rating > 0
+                ? rating
+                : null,
+            sound_name:
+              selectedSound?.name ?? null,
+            sound_url:
+              selectedSound?.url ?? null,
+          })
+
+      if (insertError) {
+        if (uploadedPath) {
+          await supabase.storage
+            .from('community-media')
+            .remove([uploadedPath])
+        }
+
+        throw insertError
+      }
+
+      sessionStorage.removeItem(
+        'wizenda-review-image',
       )
 
-      setCameraError(
-        'Não foi possível iniciar a gravação de vídeo.',
-      )
-    }
-  }
-
-  function stopRecordingTimer() {
-    if (
-      recordingTimerRef.current
-    ) {
-      clearInterval(
-        recordingTimerRef.current,
+      sessionStorage.removeItem(
+        'wizenda-review-media-type',
       )
 
-      recordingTimerRef.current =
-        null
-    }
-  }
-
-  function stopRecording() {
-    const recorder =
-      mediaRecorderRef.current
-
-    if (
-      !recorder ||
-      !isRecording
-    ) {
-      return
-    }
-
-    stopRecordingTimer()
-
-    setIsRecording(false)
-
-    if (
-      recorder.state !==
-      'inactive'
-    ) {
-      recorder.stop()
-    }
-
-    mediaRecorderRef.current =
-      null
-  }
-
-  function toggleRecording() {
-    if (isRecording) {
-      stopRecording()
-      return
-    }
-
-    startRecording()
-  }
-
-  function retake() {
-    if (capturedVideo) {
-      URL.revokeObjectURL(
-        capturedVideo,
-      )
-    }
-
-    setCapturedImage(null)
-    setCapturedVideo(null)
-
-    sessionStorage.removeItem(
-      'wizenda-review-media-type',
-    )
-
-    clearVideoBlob()
-
-    startCamera()
-  }
-
-  function continueToEditor() {
-    if (
-      !capturedImage &&
-      !capturedVideo
-    ) {
-      return
-    }
-
-    try {
-      sessionStorage.setItem(
+      sessionStorage.removeItem(
         'wizenda-review-filter',
-        selectedFilter,
       )
 
-      if (capturedImage) {
-        sessionStorage.setItem(
-          'wizenda-review-image',
-          capturedImage,
+      const dbRequest =
+        indexedDB.open(
+          'wizenda-review',
+          1,
         )
 
-        sessionStorage.setItem(
-          'wizenda-review-media-type',
-          'image',
-        )
+      dbRequest.onsuccess = () => {
+        const db = dbRequest.result
+
+        try {
+          const transaction =
+            db.transaction(
+              'videos',
+              'readwrite',
+            )
+
+          transaction
+            .objectStore('videos')
+            .delete('current')
+
+          transaction.oncomplete = () => {
+            db.close()
+          }
+        } catch {
+          try {
+            db.close()
+          } catch {
+            // Ignorar
+          }
+        }
       }
 
-      if (capturedVideo) {
-        sessionStorage.setItem(
-          'wizenda-review-media-type',
-          'video',
-        )
-      }
-
-      router.push(
-        '/review/create/publish',
-      )
-    } catch (error) {
+      router.replace('/review')
+    } catch (err) {
       console.error(
-        'Erro ao preparar mídia:',
-        error,
+        'Erro ao publicar review:',
+        err,
       )
 
-      alert(
-        'Não foi possível preparar a mídia. Tenta novamente.',
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Não foi possível publicar.',
       )
+
+      setSaving(false)
     }
   }
-
-  const hasPreview =
-    Boolean(
-      capturedImage ||
-        capturedVideo,
-    )
 
   return (
-    <main className="fixed inset-0 overflow-hidden bg-black text-white">
-      <canvas
-        ref={canvasRef}
-        className="hidden"
-      />
+    <main className="min-h-screen bg-white pb-28">
+      <header className="sticky top-0 z-30 border-b border-gray-100 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-2xl items-center justify-between px-4">
+          <button
+            type="button"
+            onClick={() =>
+              router.back()
+            }
+            className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-gray-100"
+          >
+            <ArrowLeft
+              size={21}
+            />
+          </button>
 
-      {/* CÂMERA */}
-      {!hasPreview && (
-        <>
-          <video
-            ref={videoRef}
-            autoPlay
-            muted
-            playsInline
-            className={`absolute inset-0 h-full w-full object-cover ${currentFilter.className}`}
-          />
+          <h1 className="text-base font-bold text-gray-950">
+            Novo Review
+          </h1>
 
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/70 to-transparent" />
+          <button
+            type="button"
+            onClick={publish}
+            disabled={saving}
+            className="flex h-10 items-center justify-center rounded-full bg-orange-500 px-5 text-sm font-bold text-white disabled:opacity-50"
+          >
+            {saving
+              ? 'A publicar...'
+              : 'Publicar'}
+          </button>
+        </div>
+      </header>
 
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-72 bg-gradient-to-t from-black/90 to-transparent" />
-
-          {/* TOPO */}
-          <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-5 py-5">
-            <Link
-              href="/review"
-              aria-label="Fechar"
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-black/30 backdrop-blur-md"
-            >
-              <X size={22} />
-            </Link>
-
-            <div className="flex items-center gap-2 rounded-full bg-black/30 px-4 py-2 backdrop-blur-md">
-              <Sparkles
-                size={16}
-                className="text-orange-400"
+      <div className="mx-auto max-w-2xl px-4 pt-5">
+        <div className="overflow-hidden rounded-[4px] bg-black">
+          {mediaType === 'image' &&
+            imageUrl && (
+              <img
+                src={imageUrl}
+                alt="Preview"
+                className="max-h-[70vh] w-full object-contain"
               />
+            )}
 
-              <span className="text-sm font-semibold">
-                Review
-              </span>
+          {mediaType === 'video' &&
+            videoUrl && (
+              <video
+                ref={videoRef}
+                src={videoUrl}
+                controls
+                playsInline
+                className="max-h-[70vh] w-full object-contain"
+                muted={
+                  !originalAudioEnabled
+                }
+              />
+            )}
+        </div>
+
+        {mediaType === 'video' && (
+          <div className="mt-3 flex items-center justify-between rounded-[4px] border border-gray-200 bg-white p-3">
+            <div className="flex items-center gap-3">
+              {originalAudioEnabled ? (
+                <Volume2
+                  size={20}
+                  className="text-orange-500"
+                />
+              ) : (
+                <VolumeX
+                  size={20}
+                  className="text-gray-400"
+                />
+              )}
+
+              <div>
+                <p className="text-sm font-semibold text-gray-900">
+                  Áudio original
+                </p>
+
+                <p className="text-xs text-gray-500">
+                  {originalAudioEnabled
+                    ? 'Ligado'
+                    : 'Desligado'}
+                </p>
+              </div>
             </div>
 
             <button
               type="button"
               onClick={
-                switchCamera
+                toggleOriginalAudio
               }
-              disabled={
-                isRecording
-              }
-              aria-label="Trocar câmera"
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-black/30 backdrop-blur-md disabled:opacity-40"
+              className={`relative h-7 w-12 rounded-full transition ${
+                originalAudioEnabled
+                  ? 'bg-orange-500'
+                  : 'bg-gray-300'
+              }`}
             >
-              <FlipHorizontal2
-                size={21}
+              <span
+                className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${
+                  originalAudioEnabled
+                    ? 'left-6'
+                    : 'left-1'
+                }`}
               />
             </button>
           </div>
+        )}
 
-          {/* ERRO */}
-          {cameraError && (
-            <div className="absolute inset-x-5 top-1/2 z-30 -translate-y-1/2 rounded-2xl bg-black/70 p-5 text-center backdrop-blur-md">
-              <Camera
-                size={32}
-                className="mx-auto mb-3 text-orange-400"
+        <div className="mt-5">
+          <textarea
+            value={caption}
+            onChange={(event) =>
+              setCaption(
+                event.target.value,
+              )
+            }
+            placeholder="Conta a tua experiência..."
+            rows={4}
+            className="w-full resize-none rounded-[4px] border border-gray-200 bg-gray-50 p-4 text-sm outline-none focus:border-orange-500"
+          />
+        </div>
+
+        <div className="mt-4 grid grid-cols-4 gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              setShowSounds(true)
+            }
+            className="flex flex-col items-center gap-2 rounded-[4px] border border-gray-200 p-3"
+          >
+            <Music2
+              size={20}
+              className="text-orange-500"
+            />
+
+            <span className="text-xs font-medium">
+              Som
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              setShowLocation(true)
+            }
+            className="flex flex-col items-center gap-2 rounded-[4px] border border-gray-200 p-3"
+          >
+            <MapPin
+              size={20}
+              className="text-orange-500"
+            />
+
+            <span className="text-xs font-medium">
+              Local
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              setShowRating(true)
+            }
+            className="flex flex-col items-center gap-2 rounded-[4px] border border-gray-200 p-3"
+          >
+            <Star
+              size={20}
+              className="text-orange-500"
+            />
+
+            <span className="text-xs font-medium">
+              Avaliar
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={publish}
+            disabled={saving}
+            className="flex flex-col items-center gap-2 rounded-[4px] bg-orange-500 p-3 text-white disabled:opacity-50"
+          >
+            <Check size={20} />
+
+            <span className="text-xs font-bold">
+              Publicar
+            </span>
+          </button>
+        </div>
+
+        {selectedSound && (
+          <div className="mt-4 flex items-center justify-between rounded-[4px] bg-orange-50 p-3">
+            <div className="flex items-center gap-3">
+              <Music2
+                size={20}
+                className="text-orange-500"
               />
 
-              <p className="text-sm text-white">
-                {cameraError}
-              </p>
+              <div>
+                <p className="text-sm font-semibold">
+                  {selectedSound.name}
+                </p>
+
+                <p className="text-xs text-gray-500">
+                  {selectedSound.category}
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={removeSound}
+              className="text-gray-500"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        )}
+
+        {location && (
+          <div className="mt-3 flex items-center gap-2 text-sm text-gray-600">
+            <MapPin
+              size={16}
+              className="text-orange-500"
+            />
+
+            {location}
+          </div>
+        )}
+
+        {rating > 0 && (
+          <div className="mt-3 flex items-center gap-1">
+            {Array.from({
+              length: 5,
+            }).map((_, index) => (
+              <Star
+                key={index}
+                size={17}
+                className={
+                  index < rating
+                    ? 'fill-orange-500 text-orange-500'
+                    : 'text-gray-300'
+                }
+              />
+            ))}
+          </div>
+        )}
+
+        {error && (
+          <div className="mt-4 rounded-[4px] bg-red-50 p-3 text-sm text-red-600">
+            {error}
+          </div>
+        )}
+      </div>
+
+      {selectedSound && (
+        <audio
+          ref={audioRef}
+          src={selectedSound.url}
+          loop
+        />
+      )}
+
+      {showSounds && (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40">
+          <div className="w-full rounded-t-2xl bg-white p-5">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-lg font-bold">
+                Escolher som
+              </h2>
 
               <button
                 type="button"
-                onClick={
-                  startCamera
+                onClick={() =>
+                  setShowSounds(false)
                 }
-                className="mt-4 rounded-xl bg-orange-500 px-5 py-2.5 text-sm font-bold"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100"
               >
-                Tentar novamente
+                <X size={18} />
               </button>
             </div>
-          )}
 
-          {/* GRAVAÇÃO */}
-          {isRecording && (
-            <div className="absolute left-1/2 top-24 z-30 -translate-x-1/2">
-              <div className="flex items-center gap-2 rounded-full bg-red-600/90 px-4 py-2 text-sm font-bold shadow-lg">
-                <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-white" />
+            <div className="space-y-2">
+              {sounds.map(
+                (sound) => (
+                  <button
+                    key={sound.id}
+                    type="button"
+                    onClick={() =>
+                      selectSound(
+                        sound,
+                      )
+                    }
+                    className="flex w-full items-center gap-3 rounded-[4px] border border-gray-200 p-4 text-left hover:bg-gray-50"
+                  >
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-100">
+                      <Music2
+                        size={20}
+                        className="text-orange-500"
+                      />
+                    </div>
 
-                REC{' '}
-                {
-                  recordingSeconds
-                }
-                s
-              </div>
-            </div>
-          )}
+                    <div>
+                      <p className="text-sm font-semibold">
+                        {sound.name}
+                      </p>
 
-          {/* FILTROS */}
-          <div className="absolute inset-x-0 bottom-40 z-20">
-            <div className="flex items-center gap-3 overflow-x-auto px-5 pb-2 scrollbar-hide">
-              {filters.map(
-                (filter) => {
-                  const active =
-                    selectedFilter ===
-                    filter.id
-
-                  return (
-                    <button
-                      key={
-                        filter.id
-                      }
-                      type="button"
-                      disabled={
-                        isRecording
-                      }
-                      onClick={() =>
-                        setSelectedFilter(
-                          filter.id,
-                        )
-                      }
-                      className="flex shrink-0 flex-col items-center gap-2 disabled:opacity-50"
-                    >
-                      <div
-                        className={`flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border-2 ${
-                          active
-                            ? 'border-orange-500'
-                            : 'border-white/50'
-                        }`}
-                      >
-                        <div
-                          className={`h-full w-full bg-gradient-to-br from-orange-400 via-pink-500 to-purple-600 ${filter.className}`}
-                        />
-                      </div>
-
-                      <span
-                        className={`text-[10px] font-medium ${
-                          active
-                            ? 'text-white'
-                            : 'text-white/70'
-                        }`}
-                      >
-                        {
-                          filter.name
-                        }
-                      </span>
-                    </button>
-                  )
-                },
+                      <p className="text-xs text-gray-500">
+                        {sound.category}
+                      </p>
+                    </div>
+                  </button>
+                ),
               )}
             </div>
           </div>
-
-          {/* CONTROLOS */}
-          <div className="absolute inset-x-0 bottom-5 z-20 flex items-center justify-center">
-            <div className="flex w-full max-w-sm items-center justify-between px-8">
-              {/* GALERIA */}
-              <button
-                type="button"
-                disabled={
-                  isRecording
-                }
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-black/40 backdrop-blur-md disabled:opacity-40"
-                aria-label="Galeria"
-              >
-                <ImageIcon
-                  size={22}
-                />
-              </button>
-
-              {/* CAPTURA / VÍDEO */}
-              <div className="flex flex-col items-center gap-2">
-                <button
-                  type="button"
-                  onClick={
-                    captureMode ===
-                    'photo'
-                      ? capturePhoto
-                      : toggleRecording
-                  }
-                  disabled={
-                    !cameraReady
-                  }
-                  aria-label={
-                    captureMode ===
-                    'photo'
-                      ? 'Capturar foto'
-                      : isRecording
-                        ? 'Parar gravação'
-                        : 'Gravar vídeo'
-                  }
-                  className={`flex h-20 w-20 items-center justify-center rounded-full border-4 ${
-                    isRecording
-                      ? 'border-red-500'
-                      : 'border-white'
-                  } disabled:opacity-40`}
-                >
-                  <span
-                    className={`transition ${
-                      isRecording
-                        ? 'h-9 w-9 rounded-[6px] bg-red-500'
-                        : captureMode ===
-                            'photo'
-                          ? 'h-16 w-16 rounded-full bg-white active:scale-90'
-                          : 'h-16 w-16 rounded-full bg-red-500 active:scale-90'
-                    }`}
-                  />
-                </button>
-
-                <div className="flex items-center gap-2 rounded-full bg-black/40 p-1 backdrop-blur-md">
-                  <button
-                    type="button"
-                    disabled={
-                      isRecording
-                    }
-                    onClick={() =>
-                      setCaptureMode(
-                        'photo',
-                      )
-                    }
-                    className={`rounded-full px-3 py-1 text-[10px] font-bold ${
-                      captureMode ===
-                      'photo'
-                        ? 'bg-white text-black'
-                        : 'text-white/70'
-                    }`}
-                  >
-                    FOTO
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={
-                      isRecording
-                    }
-                    onClick={() =>
-                      setCaptureMode(
-                        'video',
-                      )
-                    }
-                    className={`flex items-center gap-1 rounded-full px-3 py-1 text-[10px] font-bold ${
-                      captureMode ===
-                      'video'
-                        ? 'bg-red-500 text-white'
-                        : 'text-white/70'
-                    }`}
-                  >
-                    <Video
-                      size={11}
-                    />
-
-                    VÍDEO
-                  </button>
-                </div>
-              </div>
-
-              {/* FILTROS */}
-              <button
-                type="button"
-                aria-label="Filtros"
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-black/40 backdrop-blur-md"
-              >
-                <Sparkles
-                  size={22}
-                />
-              </button>
-            </div>
-          </div>
-        </>
+        </div>
       )}
 
-      {/* FOTO / VÍDEO CAPTURADO */}
-      {hasPreview && (
-        <>
-          {capturedImage && (
-            <img
-              src={
-                capturedImage
-              }
-              alt="Foto capturada"
-              className={`absolute inset-0 h-full w-full object-cover ${currentFilter.className}`}
-            />
-          )}
+      {showLocation && (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40">
+          <div className="w-full rounded-t-2xl bg-white p-5">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-lg font-bold">
+                Localização
+              </h2>
 
-          {capturedVideo && (
-            <video
-              src={
-                capturedVideo
-              }
-              autoPlay
-              loop
-              playsInline
-              controls
-              className={`absolute inset-0 h-full w-full object-cover ${currentFilter.className}`}
-            />
-          )}
+              <button
+                type="button"
+                onClick={() =>
+                  setShowLocation(false)
+                }
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100"
+              >
+                <X size={18} />
+              </button>
+            </div>
 
-          <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-5 py-5">
-            <button
-              type="button"
-              onClick={retake}
-              className="flex h-10 items-center gap-2 rounded-full bg-black/40 px-4 backdrop-blur-md"
-            >
-              <ChevronLeft
+            <div className="flex items-center gap-3 rounded-[4px] border border-gray-200 px-4">
+              <MapPin
                 size={19}
+                className="text-orange-500"
               />
 
-              <span className="text-sm font-semibold">
-                Refazer
-              </span>
-            </button>
+              <input
+                autoFocus
+                value={location}
+                onChange={(event) =>
+                  setLocation(
+                    event.target.value,
+                  )
+                }
+                placeholder="Ex.: Ilha do Mussulo, Luanda"
+                className="h-12 flex-1 bg-transparent text-sm outline-none"
+              />
+            </div>
 
-            <span className="rounded-full bg-black/40 px-4 py-2 text-sm font-semibold backdrop-blur-md">
-              {capturedVideo
-                ? 'Vídeo'
-                : 'Foto'}
-            </span>
-
-            <Link
-              href="/review"
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-black/40 backdrop-blur-md"
-            >
-              <X size={21} />
-            </Link>
-          </div>
-
-          {/* AVANÇAR */}
-          <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/90 to-transparent px-5 pb-7 pt-20">
             <button
               type="button"
-              onClick={
-                continueToEditor
+              onClick={() =>
+                setShowLocation(false)
               }
-              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-orange-500 py-4 text-base font-bold text-white shadow-lg transition active:scale-[0.98]"
+              className="mt-4 w-full rounded-[4px] bg-orange-500 py-3 text-sm font-bold text-white"
             >
-              <span>
-                Avançar
-              </span>
-
-              <ChevronRight
-                size={20}
-              />
+              Confirmar localização
             </button>
           </div>
-        </>
+        </div>
+      )}
+
+      {showRating && (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40">
+          <div className="w-full rounded-t-2xl bg-white p-5">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-lg font-bold">
+                Avaliar experiência
+              </h2>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setShowRating(false)
+                }
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex justify-center gap-3 py-5">
+              {Array.from({
+                length: 5,
+              }).map((_, index) => {
+                const value =
+                  index + 1
+
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() =>
+                      setRating(
+                        value,
+                      )
+                    }
+                  >
+                    <Star
+                      size={34}
+                      className={
+                        value <= rating
+                          ? 'fill-orange-500 text-orange-500'
+                          : 'text-gray-300'
+                      }
+                    />
+                  </button>
+                )
+              })}
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                setShowRating(false)
+              }
+              className="w-full rounded-[4px] bg-orange-500 py-3 text-sm font-bold text-white"
+            >
+              Confirmar
+            </button>
+          </div>
+        </div>
       )}
     </main>
   )
