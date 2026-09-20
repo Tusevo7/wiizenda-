@@ -60,13 +60,22 @@ const VIDEO_STORE_NAME = 'videos'
 
 function openVideoDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(VIDEO_DB_NAME, 1)
+    const request = indexedDB.open(
+      VIDEO_DB_NAME,
+      1,
+    )
 
     request.onupgradeneeded = () => {
       const db = request.result
 
-      if (!db.objectStoreNames.contains(VIDEO_STORE_NAME)) {
-        db.createObjectStore(VIDEO_STORE_NAME)
+      if (
+        !db.objectStoreNames.contains(
+          VIDEO_STORE_NAME,
+        )
+      ) {
+        db.createObjectStore(
+          VIDEO_STORE_NAME,
+        )
       }
     }
 
@@ -80,50 +89,65 @@ function openVideoDatabase(): Promise<IDBDatabase> {
   })
 }
 
-async function saveVideoBlob(blob: Blob) {
-  const db = await openVideoDatabase()
+async function saveVideoBlob(
+  blob: Blob,
+) {
+  const db =
+    await openVideoDatabase()
 
-  return new Promise<void>((resolve, reject) => {
-    const transaction = db.transaction(
-      VIDEO_STORE_NAME,
-      'readwrite',
-    )
+  return new Promise<void>(
+    (resolve, reject) => {
+      const transaction =
+        db.transaction(
+          VIDEO_STORE_NAME,
+          'readwrite',
+        )
 
-    transaction.objectStore(VIDEO_STORE_NAME).put(
-      blob,
-      'current',
-    )
+      transaction
+        .objectStore(
+          VIDEO_STORE_NAME,
+        )
+        .put(blob, 'current')
 
-    transaction.oncomplete = () => {
-      db.close()
-      resolve()
-    }
+      transaction.oncomplete = () => {
+        db.close()
+        resolve()
+      }
 
-    transaction.onerror = () => {
-      db.close()
-      reject(transaction.error)
-    }
-  })
+      transaction.onerror = () => {
+        db.close()
+        reject(transaction.error)
+      }
+    },
+  )
 }
 
 async function clearVideoBlob() {
   try {
-    const db = await openVideoDatabase()
+    const db =
+      await openVideoDatabase()
 
-    await new Promise<void>((resolve, reject) => {
-      const transaction = db.transaction(
-        VIDEO_STORE_NAME,
-        'readwrite',
-      )
+    await new Promise<void>(
+      (resolve, reject) => {
+        const transaction =
+          db.transaction(
+            VIDEO_STORE_NAME,
+            'readwrite',
+          )
 
-      transaction.objectStore(VIDEO_STORE_NAME).delete(
-        'current',
-      )
+        transaction
+          .objectStore(
+            VIDEO_STORE_NAME,
+          )
+          .delete('current')
 
-      transaction.oncomplete = () => resolve()
-      transaction.onerror = () =>
-        reject(transaction.error)
-    })
+        transaction.oncomplete = () =>
+          resolve()
+
+        transaction.onerror = () =>
+          reject(transaction.error)
+      },
+    )
 
     db.close()
   } catch (error) {
@@ -137,21 +161,41 @@ async function clearVideoBlob() {
 export default function CreateReviewPage() {
   const router = useRouter()
 
-  const videoRef = useRef<HTMLVideoElement | null>(null)
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const streamRef = useRef<MediaStream | null>(null)
+  const videoRef =
+    useRef<HTMLVideoElement | null>(
+      null,
+    )
+
+  const canvasRef =
+    useRef<HTMLCanvasElement | null>(
+      null,
+    )
+
+  const streamRef =
+    useRef<MediaStream | null>(
+      null,
+    )
+
   const mediaRecorderRef =
-    useRef<MediaRecorder | null>(null)
+    useRef<MediaRecorder | null>(
+      null,
+    )
 
-  const recordedChunksRef = useRef<Blob[]>([])
+  const recordedChunksRef =
+    useRef<Blob[]>([])
+
   const recordingTimerRef =
-    useRef<ReturnType<typeof setInterval> | null>(null)
+    useRef<ReturnType<
+      typeof setInterval
+    > | null>(null)
 
-  const [cameraReady, setCameraReady] = useState(false)
+  const [cameraReady, setCameraReady] =
+    useState(false)
 
-  const [facingMode, setFacingMode] = useState<
-    'user' | 'environment'
-  >('environment')
+  const [facingMode, setFacingMode] =
+    useState<
+      'user' | 'environment'
+    >('environment')
 
   const [selectedFilter, setSelectedFilter] =
     useState('original')
@@ -166,17 +210,22 @@ export default function CreateReviewPage() {
     useState<string | null>(null)
 
   const [captureMode, setCaptureMode] =
-    useState<'photo' | 'video'>('photo')
+    useState<
+      'photo' | 'video'
+    >('photo')
 
   const [isRecording, setIsRecording] =
     useState(false)
 
-  const [recordingSeconds, setRecordingSeconds] =
-    useState(0)
+  const [
+    recordingSeconds,
+    setRecordingSeconds,
+  ] = useState(0)
 
   const currentFilter =
     filters.find(
-      (filter) => filter.id === selectedFilter,
+      (filter) =>
+        filter.id === selectedFilter,
     ) ?? filters[0]
 
   useEffect(() => {
@@ -185,6 +234,14 @@ export default function CreateReviewPage() {
     return () => {
       stopCamera()
       stopRecordingTimer()
+
+      if (
+        capturedVideo
+      ) {
+        URL.revokeObjectURL(
+          capturedVideo,
+        )
+      }
     }
   }, [facingMode])
 
@@ -197,43 +254,105 @@ export default function CreateReviewPage() {
 
       if (
         !navigator.mediaDevices ||
-        !navigator.mediaDevices.getUserMedia
+        !navigator.mediaDevices
+          .getUserMedia
       ) {
         setCameraError(
           'Este navegador não suporta acesso à câmera.',
         )
+
         return
       }
 
       const stream =
-        await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode,
-            width: {
-              ideal: 1080,
+        await navigator.mediaDevices.getUserMedia(
+          {
+            video: {
+              facingMode,
+              width: {
+                ideal: 1080,
+              },
+              height: {
+                ideal: 1920,
+              },
             },
-            height: {
-              ideal: 1920,
+
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
             },
           },
-          audio: true,
-        })
+        )
+
+      const videoTracks =
+        stream.getVideoTracks()
+
+      const audioTracks =
+        stream.getAudioTracks()
+
+      console.log(
+        '🎥 Faixas de vídeo:',
+        videoTracks,
+      )
+
+      console.log(
+        '🎤 Faixas de áudio:',
+        audioTracks,
+      )
+
+      if (
+        videoTracks.length === 0
+      ) {
+        stream
+          .getTracks()
+          .forEach((track) =>
+            track.stop(),
+          )
+
+        setCameraError(
+          'A câmera não foi encontrada.',
+        )
+
+        return
+      }
+
+      if (
+        audioTracks.length === 0
+      ) {
+        stream
+          .getTracks()
+          .forEach((track) =>
+            track.stop(),
+          )
+
+        setCameraError(
+          'O microfone não foi autorizado. Permite o acesso ao microfone e tenta novamente.',
+        )
+
+        return
+      }
 
       streamRef.current = stream
 
       if (videoRef.current) {
-        videoRef.current.srcObject = stream
+        videoRef.current.srcObject =
+          stream
+
         await videoRef.current.play()
       }
 
       setCameraReady(true)
     } catch (error) {
-      console.error(error)
+      console.error(
+        'Erro ao iniciar câmera:',
+        error,
+      )
 
       setCameraReady(false)
 
       setCameraError(
-        'Não foi possível aceder à câmera. Verifica as permissões do navegador.',
+        'Não foi possível aceder à câmera e ao microfone. Verifica as permissões do navegador.',
       )
     }
   }
@@ -242,10 +361,14 @@ export default function CreateReviewPage() {
     if (streamRef.current) {
       streamRef.current
         .getTracks()
-        .forEach((track) => track.stop())
+        .forEach((track) =>
+          track.stop(),
+        )
 
       streamRef.current = null
     }
+
+    setCameraReady(false)
   }
 
   function switchCamera() {
@@ -253,29 +376,41 @@ export default function CreateReviewPage() {
       return
     }
 
-    setFacingMode((current) =>
-      current === 'environment'
-        ? 'user'
-        : 'environment',
+    setFacingMode(
+      (current) =>
+        current === 'environment'
+          ? 'user'
+          : 'environment',
     )
   }
 
   function capturePhoto() {
-    const video = videoRef.current
-    const canvas = canvasRef.current
+    const video =
+      videoRef.current
 
-    if (!video || !canvas || !cameraReady) {
+    const canvas =
+      canvasRef.current
+
+    if (
+      !video ||
+      !canvas ||
+      !cameraReady
+    ) {
       return
     }
 
-    const context = canvas.getContext('2d')
+    const context =
+      canvas.getContext('2d')
 
     if (!context) {
       return
     }
 
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
+    canvas.width =
+      video.videoWidth
+
+    canvas.height =
+      video.videoHeight
 
     context.drawImage(
       video,
@@ -285,10 +420,11 @@ export default function CreateReviewPage() {
       canvas.height,
     )
 
-    const image = canvas.toDataURL(
-      'image/jpeg',
-      0.9,
-    )
+    const image =
+      canvas.toDataURL(
+        'image/jpeg',
+        0.9,
+      )
 
     setCapturedImage(image)
     setCapturedVideo(null)
@@ -306,14 +442,19 @@ export default function CreateReviewPage() {
 
     return (
       types.find((type) =>
-        MediaRecorder.isTypeSupported(type),
+        MediaRecorder.isTypeSupported(
+          type,
+        ),
       ) ?? ''
     )
   }
 
   function startRecording() {
+    const stream =
+      streamRef.current
+
     if (
-      !streamRef.current ||
+      !stream ||
       !cameraReady ||
       isRecording
     ) {
@@ -321,81 +462,196 @@ export default function CreateReviewPage() {
     }
 
     if (
-      typeof MediaRecorder === 'undefined'
+      typeof MediaRecorder ===
+      'undefined'
     ) {
       setCameraError(
         'Este navegador não suporta gravação de vídeo.',
       )
+
       return
     }
+
+    const videoTracks =
+      stream.getVideoTracks()
+
+    const audioTracks =
+      stream.getAudioTracks()
+
+    console.log(
+      '🎥 Faixas de vídeo para gravação:',
+      videoTracks,
+    )
+
+    console.log(
+      '🎤 Faixas de áudio para gravação:',
+      audioTracks,
+    )
+
+    if (
+      videoTracks.length === 0
+    ) {
+      setCameraError(
+        'A câmera não está disponível.',
+      )
+
+      return
+    }
+
+    if (
+      audioTracks.length === 0
+    ) {
+      setCameraError(
+        'O microfone não está disponível. Permite o acesso ao microfone no navegador e tenta novamente.',
+      )
+
+      return
+    }
+
+    const recordingStream =
+      new MediaStream([
+        videoTracks[0],
+        audioTracks[0],
+      ])
 
     const mimeType =
       getSupportedVideoMimeType()
 
+    console.log(
+      '🎬 Formato de gravação:',
+      mimeType || 'default',
+    )
+
     try {
-      const recorder = mimeType
-        ? new MediaRecorder(
-            streamRef.current,
-            { mimeType },
-          )
-        : new MediaRecorder(
-            streamRef.current,
+      const recorder =
+        mimeType
+          ? new MediaRecorder(
+              recordingStream,
+              {
+                mimeType,
+                audioBitsPerSecond:
+                  128000,
+                videoBitsPerSecond:
+                  2500000,
+              },
+            )
+          : new MediaRecorder(
+              recordingStream,
+              {
+                audioBitsPerSecond:
+                  128000,
+                videoBitsPerSecond:
+                  2500000,
+              },
+            )
+
+      recordedChunksRef.current =
+        []
+
+      recorder.ondataavailable =
+        (event) => {
+          console.log(
+            '📦 Dados recebidos:',
+            event.data.size,
           )
 
-      recordedChunksRef.current = []
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          recordedChunksRef.current.push(
-            event.data,
-          )
+          if (
+            event.data.size > 0
+          ) {
+            recordedChunksRef.current.push(
+              event.data,
+            )
+          }
         }
-      }
 
-      recorder.onstop = async () => {
-        const finalType =
-          mimeType || 'video/webm'
-
-        const blob = new Blob(
-          recordedChunksRef.current,
-          {
-            type: finalType,
-          },
+      recorder.onerror = (
+        event,
+      ) => {
+        console.error(
+          '❌ Erro MediaRecorder:',
+          event,
         )
 
-        try {
-          await saveVideoBlob(blob)
-
-          const previewUrl =
-            URL.createObjectURL(blob)
-
-          setCapturedVideo(previewUrl)
-          setCapturedImage(null)
-
-          sessionStorage.setItem(
-            'wizenda-review-media-type',
-            'video',
-          )
-
-          sessionStorage.setItem(
-            'wizenda-review-filter',
-            selectedFilter,
-          )
-
-          stopCamera()
-        } catch (error) {
-          console.error(
-            'Erro ao guardar vídeo:',
-            error,
-          )
-
-          setCameraError(
-            'Não foi possível preparar o vídeo. Tenta novamente.',
-          )
-        }
+        setCameraError(
+          'Ocorreu um erro durante a gravação.',
+        )
       }
 
-      mediaRecorderRef.current = recorder
+      recorder.onstop =
+        async () => {
+          const finalType =
+            recorder.mimeType ||
+            mimeType ||
+            'video/webm'
+
+          console.log(
+            '🎞️ Tipo final:',
+            finalType,
+          )
+
+          const blob =
+            new Blob(
+              recordedChunksRef.current,
+              {
+                type: finalType,
+              },
+            )
+
+          console.log(
+            '📦 Vídeo final:',
+            blob.size,
+            'bytes',
+          )
+
+          if (blob.size === 0) {
+            setCameraError(
+              'A gravação ficou vazia. Tenta novamente.',
+            )
+
+            return
+          }
+
+          try {
+            await saveVideoBlob(
+              blob,
+            )
+
+            const previewUrl =
+              URL.createObjectURL(
+                blob,
+              )
+
+            setCapturedVideo(
+              previewUrl,
+            )
+
+            setCapturedImage(null)
+
+            sessionStorage.setItem(
+              'wizenda-review-media-type',
+              'video',
+            )
+
+            sessionStorage.setItem(
+              'wizenda-review-filter',
+              selectedFilter,
+            )
+
+            stopCamera()
+          } catch (error) {
+            console.error(
+              'Erro ao guardar vídeo:',
+              error,
+            )
+
+            setCameraError(
+              'Não foi possível preparar o vídeo. Tenta novamente.',
+            )
+          }
+        }
+
+      mediaRecorderRef.current =
+        recorder
 
       recorder.start(250)
 
@@ -406,21 +662,25 @@ export default function CreateReviewPage() {
         setInterval(() => {
           setRecordingSeconds(
             (current) => {
-              const next = current + 1
+              const next =
+                current + 1
 
               if (
-                next >= MAX_VIDEO_SECONDS
+                next >=
+                MAX_VIDEO_SECONDS
               ) {
                 stopRecording()
               }
 
               return next
             },
-          )
-        }, 1000)
+            )
+          },
+          1000,
+        )
     } catch (error) {
       console.error(
-        'Erro ao iniciar gravação:',
+        '❌ Erro ao iniciar gravação:',
         error,
       )
 
@@ -431,12 +691,15 @@ export default function CreateReviewPage() {
   }
 
   function stopRecordingTimer() {
-    if (recordingTimerRef.current) {
+    if (
+      recordingTimerRef.current
+    ) {
       clearInterval(
         recordingTimerRef.current,
       )
 
-      recordingTimerRef.current = null
+      recordingTimerRef.current =
+        null
     }
   }
 
@@ -444,7 +707,10 @@ export default function CreateReviewPage() {
     const recorder =
       mediaRecorderRef.current
 
-    if (!recorder || !isRecording) {
+    if (
+      !recorder ||
+      !isRecording
+    ) {
       return
     }
 
@@ -452,11 +718,15 @@ export default function CreateReviewPage() {
 
     setIsRecording(false)
 
-    if (recorder.state !== 'inactive') {
+    if (
+      recorder.state !==
+      'inactive'
+    ) {
       recorder.stop()
     }
 
-    mediaRecorderRef.current = null
+    mediaRecorderRef.current =
+      null
   }
 
   function toggleRecording() {
@@ -470,7 +740,9 @@ export default function CreateReviewPage() {
 
   function retake() {
     if (capturedVideo) {
-      URL.revokeObjectURL(capturedVideo)
+      URL.revokeObjectURL(
+        capturedVideo,
+      )
     }
 
     setCapturedImage(null)
@@ -481,11 +753,15 @@ export default function CreateReviewPage() {
     )
 
     clearVideoBlob()
+
     startCamera()
   }
 
   function continueToEditor() {
-    if (!capturedImage && !capturedVideo) {
+    if (
+      !capturedImage &&
+      !capturedVideo
+    ) {
       return
     }
 
@@ -530,7 +806,10 @@ export default function CreateReviewPage() {
   }
 
   const hasPreview =
-    Boolean(capturedImage || capturedVideo)
+    Boolean(
+      capturedImage ||
+        capturedVideo,
+    )
 
   return (
     <main className="fixed inset-0 overflow-hidden bg-black text-white">
@@ -577,12 +856,18 @@ export default function CreateReviewPage() {
 
             <button
               type="button"
-              onClick={switchCamera}
-              disabled={isRecording}
+              onClick={
+                switchCamera
+              }
+              disabled={
+                isRecording
+              }
               aria-label="Trocar câmera"
               className="flex h-10 w-10 items-center justify-center rounded-full bg-black/30 backdrop-blur-md disabled:opacity-40"
             >
-              <FlipHorizontal2 size={21} />
+              <FlipHorizontal2
+                size={21}
+              />
             </button>
           </div>
 
@@ -600,7 +885,9 @@ export default function CreateReviewPage() {
 
               <button
                 type="button"
-                onClick={startCamera}
+                onClick={
+                  startCamera
+                }
                 className="mt-4 rounded-xl bg-orange-500 px-5 py-2.5 text-sm font-bold"
               >
                 Tentar novamente
@@ -614,7 +901,11 @@ export default function CreateReviewPage() {
               <div className="flex items-center gap-2 rounded-full bg-red-600/90 px-4 py-2 text-sm font-bold shadow-lg">
                 <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-white" />
 
-                REC {recordingSeconds}s
+                REC{' '}
+                {
+                  recordingSeconds
+                }
+                s
               </div>
             </div>
           )}
@@ -622,46 +913,55 @@ export default function CreateReviewPage() {
           {/* FILTROS */}
           <div className="absolute inset-x-0 bottom-40 z-20">
             <div className="flex items-center gap-3 overflow-x-auto px-5 pb-2 scrollbar-hide">
-              {filters.map((filter) => {
-                const active =
-                  selectedFilter === filter.id
+              {filters.map(
+                (filter) => {
+                  const active =
+                    selectedFilter ===
+                    filter.id
 
-                return (
-                  <button
-                    key={filter.id}
-                    type="button"
-                    disabled={isRecording}
-                    onClick={() =>
-                      setSelectedFilter(
-                        filter.id,
-                      )
-                    }
-                    className="flex shrink-0 flex-col items-center gap-2 disabled:opacity-50"
-                  >
-                    <div
-                      className={`flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border-2 ${
-                        active
-                          ? 'border-orange-500'
-                          : 'border-white/50'
-                      }`}
+                  return (
+                    <button
+                      key={
+                        filter.id
+                      }
+                      type="button"
+                      disabled={
+                        isRecording
+                      }
+                      onClick={() =>
+                        setSelectedFilter(
+                          filter.id,
+                        )
+                      }
+                      className="flex shrink-0 flex-col items-center gap-2 disabled:opacity-50"
                     >
                       <div
-                        className={`h-full w-full bg-gradient-to-br from-orange-400 via-pink-500 to-purple-600 ${filter.className}`}
-                      />
-                    </div>
+                        className={`flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border-2 ${
+                          active
+                            ? 'border-orange-500'
+                            : 'border-white/50'
+                        }`}
+                      >
+                        <div
+                          className={`h-full w-full bg-gradient-to-br from-orange-400 via-pink-500 to-purple-600 ${filter.className}`}
+                        />
+                      </div>
 
-                    <span
-                      className={`text-[10px] font-medium ${
-                        active
-                          ? 'text-white'
-                          : 'text-white/70'
-                      }`}
-                    >
-                      {filter.name}
-                    </span>
-                  </button>
-                )
-              })}
+                      <span
+                        className={`text-[10px] font-medium ${
+                          active
+                            ? 'text-white'
+                            : 'text-white/70'
+                        }`}
+                      >
+                        {
+                          filter.name
+                        }
+                      </span>
+                    </button>
+                  )
+                },
+              )}
             </div>
           </div>
 
@@ -671,11 +971,15 @@ export default function CreateReviewPage() {
               {/* GALERIA */}
               <button
                 type="button"
-                disabled={isRecording}
+                disabled={
+                  isRecording
+                }
                 className="flex h-12 w-12 items-center justify-center rounded-full bg-black/40 backdrop-blur-md disabled:opacity-40"
                 aria-label="Galeria"
               >
-                <ImageIcon size={22} />
+                <ImageIcon
+                  size={22}
+                />
               </button>
 
               {/* CAPTURA / VÍDEO */}
@@ -683,13 +987,17 @@ export default function CreateReviewPage() {
                 <button
                   type="button"
                   onClick={
-                    captureMode === 'photo'
+                    captureMode ===
+                    'photo'
                       ? capturePhoto
                       : toggleRecording
                   }
-                  disabled={!cameraReady}
+                  disabled={
+                    !cameraReady
+                  }
                   aria-label={
-                    captureMode === 'photo'
+                    captureMode ===
+                    'photo'
                       ? 'Capturar foto'
                       : isRecording
                         ? 'Parar gravação'
@@ -705,7 +1013,8 @@ export default function CreateReviewPage() {
                     className={`transition ${
                       isRecording
                         ? 'h-9 w-9 rounded-[6px] bg-red-500'
-                        : captureMode === 'photo'
+                        : captureMode ===
+                            'photo'
                           ? 'h-16 w-16 rounded-full bg-white active:scale-90'
                           : 'h-16 w-16 rounded-full bg-red-500 active:scale-90'
                     }`}
@@ -715,12 +1024,17 @@ export default function CreateReviewPage() {
                 <div className="flex items-center gap-2 rounded-full bg-black/40 p-1 backdrop-blur-md">
                   <button
                     type="button"
-                    disabled={isRecording}
+                    disabled={
+                      isRecording
+                    }
                     onClick={() =>
-                      setCaptureMode('photo')
+                      setCaptureMode(
+                        'photo',
+                      )
                     }
                     className={`rounded-full px-3 py-1 text-[10px] font-bold ${
-                      captureMode === 'photo'
+                      captureMode ===
+                      'photo'
                         ? 'bg-white text-black'
                         : 'text-white/70'
                     }`}
@@ -730,17 +1044,25 @@ export default function CreateReviewPage() {
 
                   <button
                     type="button"
-                    disabled={isRecording}
+                    disabled={
+                      isRecording
+                    }
                     onClick={() =>
-                      setCaptureMode('video')
+                      setCaptureMode(
+                        'video',
+                      )
                     }
                     className={`flex items-center gap-1 rounded-full px-3 py-1 text-[10px] font-bold ${
-                      captureMode === 'video'
+                      captureMode ===
+                      'video'
                         ? 'bg-red-500 text-white'
                         : 'text-white/70'
                     }`}
                   >
-                    <Video size={11} />
+                    <Video
+                      size={11}
+                    />
+
                     VÍDEO
                   </button>
                 </div>
@@ -752,7 +1074,9 @@ export default function CreateReviewPage() {
                 aria-label="Filtros"
                 className="flex h-12 w-12 items-center justify-center rounded-full bg-black/40 backdrop-blur-md"
               >
-                <Sparkles size={22} />
+                <Sparkles
+                  size={22}
+                />
               </button>
             </div>
           </div>
@@ -764,22 +1088,26 @@ export default function CreateReviewPage() {
         <>
           {capturedImage && (
             <img
-              src={capturedImage}
+              src={
+                capturedImage
+              }
               alt="Foto capturada"
               className={`absolute inset-0 h-full w-full object-cover ${currentFilter.className}`}
             />
           )}
 
-         {capturedVideo && (
-  <video
-    src={capturedVideo}
-    autoPlay
-    loop
-    playsInline
-    controls
-    className={`absolute inset-0 h-full w-full object-cover ${currentFilter.className}`}
-  />
-)}
+          {capturedVideo && (
+            <video
+              src={
+                capturedVideo
+              }
+              autoPlay
+              loop
+              playsInline
+              controls
+              className={`absolute inset-0 h-full w-full object-cover ${currentFilter.className}`}
+            />
+          )}
 
           <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-5 py-5">
             <button
@@ -787,7 +1115,9 @@ export default function CreateReviewPage() {
               onClick={retake}
               className="flex h-10 items-center gap-2 rounded-full bg-black/40 px-4 backdrop-blur-md"
             >
-              <ChevronLeft size={19} />
+              <ChevronLeft
+                size={19}
+              />
 
               <span className="text-sm font-semibold">
                 Refazer
@@ -812,12 +1142,18 @@ export default function CreateReviewPage() {
           <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/90 to-transparent px-5 pb-7 pt-20">
             <button
               type="button"
-              onClick={continueToEditor}
+              onClick={
+                continueToEditor
+              }
               className="flex w-full items-center justify-center gap-2 rounded-2xl bg-orange-500 py-4 text-base font-bold text-white shadow-lg transition active:scale-[0.98]"
             >
-              <span>Avançar</span>
+              <span>
+                Avançar
+              </span>
 
-              <ChevronRight size={20} />
+              <ChevronRight
+                size={20}
+              />
             </button>
           </div>
         </>
