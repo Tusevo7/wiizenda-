@@ -770,17 +770,16 @@ export default function CreateReviewPage() {
             />
           )}
 
-          {capturedVideo && (
-            <video
-              src={capturedVideo}
-              autoPlay
-              muted
-              loop
-              playsInline
-              controls
-              className={`absolute inset-0 h-full w-full object-cover ${currentFilter.className}`}
-            />
-          )}
+         {capturedVideo && (
+  <video
+    src={capturedVideo}
+    autoPlay
+    loop
+    playsInline
+    controls
+    className={`absolute inset-0 h-full w-full object-cover ${currentFilter.className}`}
+  />
+)}
 
           <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-5 py-5">
             <button
