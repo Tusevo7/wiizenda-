@@ -10,6 +10,7 @@ import {
   FlipHorizontal2,
   Image as ImageIcon,
   Sparkles,
+  Video,
   X,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
@@ -52,14 +53,102 @@ const filters = [
   },
 ]
 
+const MAX_VIDEO_SECONDS = 60
+
+const VIDEO_DB_NAME = 'wizenda-review'
+const VIDEO_STORE_NAME = 'videos'
+
+function openVideoDatabase(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(VIDEO_DB_NAME, 1)
+
+    request.onupgradeneeded = () => {
+      const db = request.result
+
+      if (!db.objectStoreNames.contains(VIDEO_STORE_NAME)) {
+        db.createObjectStore(VIDEO_STORE_NAME)
+      }
+    }
+
+    request.onsuccess = () => {
+      resolve(request.result)
+    }
+
+    request.onerror = () => {
+      reject(request.error)
+    }
+  })
+}
+
+async function saveVideoBlob(blob: Blob) {
+  const db = await openVideoDatabase()
+
+  return new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(
+      VIDEO_STORE_NAME,
+      'readwrite',
+    )
+
+    transaction.objectStore(VIDEO_STORE_NAME).put(
+      blob,
+      'current',
+    )
+
+    transaction.oncomplete = () => {
+      db.close()
+      resolve()
+    }
+
+    transaction.onerror = () => {
+      db.close()
+      reject(transaction.error)
+    }
+  })
+}
+
+async function clearVideoBlob() {
+  try {
+    const db = await openVideoDatabase()
+
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(
+        VIDEO_STORE_NAME,
+        'readwrite',
+      )
+
+      transaction.objectStore(VIDEO_STORE_NAME).delete(
+        'current',
+      )
+
+      transaction.oncomplete = () => resolve()
+      transaction.onerror = () =>
+        reject(transaction.error)
+    })
+
+    db.close()
+  } catch (error) {
+    console.error(
+      'Erro ao limpar vídeo temporário:',
+      error,
+    )
+  }
+}
+
 export default function CreateReviewPage() {
   const router = useRouter()
 
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const mediaRecorderRef =
+    useRef<MediaRecorder | null>(null)
+
+  const recordedChunksRef = useRef<Blob[]>([])
+  const recordingTimerRef =
+    useRef<ReturnType<typeof setInterval> | null>(null)
 
   const [cameraReady, setCameraReady] = useState(false)
+
   const [facingMode, setFacingMode] = useState<
     'user' | 'environment'
   >('environment')
@@ -70,8 +159,20 @@ export default function CreateReviewPage() {
   const [capturedImage, setCapturedImage] =
     useState<string | null>(null)
 
+  const [capturedVideo, setCapturedVideo] =
+    useState<string | null>(null)
+
   const [cameraError, setCameraError] =
     useState<string | null>(null)
+
+  const [captureMode, setCaptureMode] =
+    useState<'photo' | 'video'>('photo')
+
+  const [isRecording, setIsRecording] =
+    useState(false)
+
+  const [recordingSeconds, setRecordingSeconds] =
+    useState(0)
 
   const currentFilter =
     filters.find(
@@ -83,6 +184,7 @@ export default function CreateReviewPage() {
 
     return () => {
       stopCamera()
+      stopRecordingTimer()
     }
   }, [facingMode])
 
@@ -121,7 +223,6 @@ export default function CreateReviewPage() {
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream
-
         await videoRef.current.play()
       }
 
@@ -148,6 +249,10 @@ export default function CreateReviewPage() {
   }
 
   function switchCamera() {
+    if (isRecording) {
+      return
+    }
+
     setFacingMode((current) =>
       current === 'environment'
         ? 'user'
@@ -186,53 +291,246 @@ export default function CreateReviewPage() {
     )
 
     setCapturedImage(image)
+    setCapturedVideo(null)
 
     stopCamera()
   }
 
-  function retakePhoto() {
-    setCapturedImage(null)
+  function getSupportedVideoMimeType() {
+    const types = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm',
+      'video/mp4',
+    ]
 
+    return (
+      types.find((type) =>
+        MediaRecorder.isTypeSupported(type),
+      ) ?? ''
+    )
+  }
+
+  function startRecording() {
+    if (
+      !streamRef.current ||
+      !cameraReady ||
+      isRecording
+    ) {
+      return
+    }
+
+    if (
+      typeof MediaRecorder === 'undefined'
+    ) {
+      setCameraError(
+        'Este navegador não suporta gravação de vídeo.',
+      )
+      return
+    }
+
+    const mimeType =
+      getSupportedVideoMimeType()
+
+    try {
+      const recorder = mimeType
+        ? new MediaRecorder(
+            streamRef.current,
+            { mimeType },
+          )
+        : new MediaRecorder(
+            streamRef.current,
+          )
+
+      recordedChunksRef.current = []
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordedChunksRef.current.push(
+            event.data,
+          )
+        }
+      }
+
+      recorder.onstop = async () => {
+        const finalType =
+          mimeType || 'video/webm'
+
+        const blob = new Blob(
+          recordedChunksRef.current,
+          {
+            type: finalType,
+          },
+        )
+
+        try {
+          await saveVideoBlob(blob)
+
+          const previewUrl =
+            URL.createObjectURL(blob)
+
+          setCapturedVideo(previewUrl)
+          setCapturedImage(null)
+
+          sessionStorage.setItem(
+            'wizenda-review-media-type',
+            'video',
+          )
+
+          sessionStorage.setItem(
+            'wizenda-review-filter',
+            selectedFilter,
+          )
+
+          stopCamera()
+        } catch (error) {
+          console.error(
+            'Erro ao guardar vídeo:',
+            error,
+          )
+
+          setCameraError(
+            'Não foi possível preparar o vídeo. Tenta novamente.',
+          )
+        }
+      }
+
+      mediaRecorderRef.current = recorder
+
+      recorder.start(250)
+
+      setIsRecording(true)
+      setRecordingSeconds(0)
+
+      recordingTimerRef.current =
+        setInterval(() => {
+          setRecordingSeconds(
+            (current) => {
+              const next = current + 1
+
+              if (
+                next >= MAX_VIDEO_SECONDS
+              ) {
+                stopRecording()
+              }
+
+              return next
+            },
+          )
+        }, 1000)
+    } catch (error) {
+      console.error(
+        'Erro ao iniciar gravação:',
+        error,
+      )
+
+      setCameraError(
+        'Não foi possível iniciar a gravação de vídeo.',
+      )
+    }
+  }
+
+  function stopRecordingTimer() {
+    if (recordingTimerRef.current) {
+      clearInterval(
+        recordingTimerRef.current,
+      )
+
+      recordingTimerRef.current = null
+    }
+  }
+
+  function stopRecording() {
+    const recorder =
+      mediaRecorderRef.current
+
+    if (!recorder || !isRecording) {
+      return
+    }
+
+    stopRecordingTimer()
+
+    setIsRecording(false)
+
+    if (recorder.state !== 'inactive') {
+      recorder.stop()
+    }
+
+    mediaRecorderRef.current = null
+  }
+
+  function toggleRecording() {
+    if (isRecording) {
+      stopRecording()
+      return
+    }
+
+    startRecording()
+  }
+
+  function retake() {
+    if (capturedVideo) {
+      URL.revokeObjectURL(capturedVideo)
+    }
+
+    setCapturedImage(null)
+    setCapturedVideo(null)
+
+    sessionStorage.removeItem(
+      'wizenda-review-media-type',
+    )
+
+    clearVideoBlob()
     startCamera()
   }
 
   function continueToEditor() {
-    if (!capturedImage) {
-      console.log(
-        'Nenhuma imagem foi capturada.',
-      )
+    if (!capturedImage && !capturedVideo) {
       return
     }
 
     try {
       sessionStorage.setItem(
-        'wizenda-review-image',
-        capturedImage,
-      )
-
-      sessionStorage.setItem(
         'wizenda-review-filter',
         selectedFilter,
       )
 
-      console.log(
-        'Imagem guardada. A abrir editor...',
-      )
+      if (capturedImage) {
+        sessionStorage.setItem(
+          'wizenda-review-image',
+          capturedImage,
+        )
+
+        sessionStorage.setItem(
+          'wizenda-review-media-type',
+          'image',
+        )
+      }
+
+      if (capturedVideo) {
+        sessionStorage.setItem(
+          'wizenda-review-media-type',
+          'video',
+        )
+      }
 
       router.push(
         '/review/create/publish',
       )
     } catch (error) {
       console.error(
-        'Erro ao guardar imagem:',
+        'Erro ao preparar mídia:',
         error,
       )
 
       alert(
-        'Não foi possível preparar a imagem. Tenta novamente.',
+        'Não foi possível preparar a mídia. Tenta novamente.',
       )
     }
   }
+
+  const hasPreview =
+    Boolean(capturedImage || capturedVideo)
 
   return (
     <main className="fixed inset-0 overflow-hidden bg-black text-white">
@@ -242,7 +540,7 @@ export default function CreateReviewPage() {
       />
 
       {/* CÂMERA */}
-      {!capturedImage && (
+      {!hasPreview && (
         <>
           <video
             ref={videoRef}
@@ -252,11 +550,9 @@ export default function CreateReviewPage() {
             className={`absolute inset-0 h-full w-full object-cover ${currentFilter.className}`}
           />
 
-          {/* Gradiente superior */}
           <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/70 to-transparent" />
 
-          {/* Gradiente inferior */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-64 bg-gradient-to-t from-black/80 to-transparent" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-72 bg-gradient-to-t from-black/90 to-transparent" />
 
           {/* TOPO */}
           <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-5 py-5">
@@ -282,8 +578,9 @@ export default function CreateReviewPage() {
             <button
               type="button"
               onClick={switchCamera}
+              disabled={isRecording}
               aria-label="Trocar câmera"
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-black/30 backdrop-blur-md"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-black/30 backdrop-blur-md disabled:opacity-40"
             >
               <FlipHorizontal2 size={21} />
             </button>
@@ -311,8 +608,19 @@ export default function CreateReviewPage() {
             </div>
           )}
 
+          {/* GRAVAÇÃO */}
+          {isRecording && (
+            <div className="absolute left-1/2 top-24 z-30 -translate-x-1/2">
+              <div className="flex items-center gap-2 rounded-full bg-red-600/90 px-4 py-2 text-sm font-bold shadow-lg">
+                <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-white" />
+
+                REC {recordingSeconds}s
+              </div>
+            </div>
+          )}
+
           {/* FILTROS */}
-          <div className="absolute inset-x-0 bottom-36 z-20">
+          <div className="absolute inset-x-0 bottom-40 z-20">
             <div className="flex items-center gap-3 overflow-x-auto px-5 pb-2 scrollbar-hide">
               {filters.map((filter) => {
                 const active =
@@ -322,12 +630,13 @@ export default function CreateReviewPage() {
                   <button
                     key={filter.id}
                     type="button"
+                    disabled={isRecording}
                     onClick={() =>
                       setSelectedFilter(
                         filter.id,
                       )
                     }
-                    className="flex shrink-0 flex-col items-center gap-2"
+                    className="flex shrink-0 flex-col items-center gap-2 disabled:opacity-50"
                   >
                     <div
                       className={`flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border-2 ${
@@ -362,22 +671,80 @@ export default function CreateReviewPage() {
               {/* GALERIA */}
               <button
                 type="button"
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-black/40 backdrop-blur-md"
+                disabled={isRecording}
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-black/40 backdrop-blur-md disabled:opacity-40"
                 aria-label="Galeria"
               >
                 <ImageIcon size={22} />
               </button>
 
-              {/* CAPTURAR */}
-              <button
-                type="button"
-                onClick={capturePhoto}
-                disabled={!cameraReady}
-                aria-label="Capturar"
-                className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-white disabled:opacity-40"
-              >
-                <span className="h-16 w-16 rounded-full bg-white transition active:scale-90" />
-              </button>
+              {/* CAPTURA / VÍDEO */}
+              <div className="flex flex-col items-center gap-2">
+                <button
+                  type="button"
+                  onClick={
+                    captureMode === 'photo'
+                      ? capturePhoto
+                      : toggleRecording
+                  }
+                  disabled={!cameraReady}
+                  aria-label={
+                    captureMode === 'photo'
+                      ? 'Capturar foto'
+                      : isRecording
+                        ? 'Parar gravação'
+                        : 'Gravar vídeo'
+                  }
+                  className={`flex h-20 w-20 items-center justify-center rounded-full border-4 ${
+                    isRecording
+                      ? 'border-red-500'
+                      : 'border-white'
+                  } disabled:opacity-40`}
+                >
+                  <span
+                    className={`transition ${
+                      isRecording
+                        ? 'h-9 w-9 rounded-[6px] bg-red-500'
+                        : captureMode === 'photo'
+                          ? 'h-16 w-16 rounded-full bg-white active:scale-90'
+                          : 'h-16 w-16 rounded-full bg-red-500 active:scale-90'
+                    }`}
+                  />
+                </button>
+
+                <div className="flex items-center gap-2 rounded-full bg-black/40 p-1 backdrop-blur-md">
+                  <button
+                    type="button"
+                    disabled={isRecording}
+                    onClick={() =>
+                      setCaptureMode('photo')
+                    }
+                    className={`rounded-full px-3 py-1 text-[10px] font-bold ${
+                      captureMode === 'photo'
+                        ? 'bg-white text-black'
+                        : 'text-white/70'
+                    }`}
+                  >
+                    FOTO
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isRecording}
+                    onClick={() =>
+                      setCaptureMode('video')
+                    }
+                    className={`flex items-center gap-1 rounded-full px-3 py-1 text-[10px] font-bold ${
+                      captureMode === 'video'
+                        ? 'bg-red-500 text-white'
+                        : 'text-white/70'
+                    }`}
+                  >
+                    <Video size={11} />
+                    VÍDEO
+                  </button>
+                </div>
+              </div>
 
               {/* FILTROS */}
               <button
@@ -392,19 +759,33 @@ export default function CreateReviewPage() {
         </>
       )}
 
-      {/* FOTO CAPTURADA */}
-      {capturedImage && (
+      {/* FOTO / VÍDEO CAPTURADO */}
+      {hasPreview && (
         <>
-          <img
-            src={capturedImage}
-            alt="Foto capturada"
-            className={`absolute inset-0 h-full w-full object-cover ${currentFilter.className}`}
-          />
+          {capturedImage && (
+            <img
+              src={capturedImage}
+              alt="Foto capturada"
+              className={`absolute inset-0 h-full w-full object-cover ${currentFilter.className}`}
+            />
+          )}
+
+          {capturedVideo && (
+            <video
+              src={capturedVideo}
+              autoPlay
+              muted
+              loop
+              playsInline
+              controls
+              className={`absolute inset-0 h-full w-full object-cover ${currentFilter.className}`}
+            />
+          )}
 
           <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-5 py-5">
             <button
               type="button"
-              onClick={retakePhoto}
+              onClick={retake}
               className="flex h-10 items-center gap-2 rounded-full bg-black/40 px-4 backdrop-blur-md"
             >
               <ChevronLeft size={19} />
@@ -415,7 +796,9 @@ export default function CreateReviewPage() {
             </button>
 
             <span className="rounded-full bg-black/40 px-4 py-2 text-sm font-semibold backdrop-blur-md">
-              Pré-visualização
+              {capturedVideo
+                ? 'Vídeo'
+                : 'Foto'}
             </span>
 
             <Link
@@ -427,7 +810,7 @@ export default function CreateReviewPage() {
           </div>
 
           {/* AVANÇAR */}
-          <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/80 to-transparent px-5 pb-7 pt-20">
+          <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/90 to-transparent px-5 pb-7 pt-20">
             <button
               type="button"
               onClick={continueToEditor}
