@@ -14,7 +14,14 @@ import CategoryChip from './components/category-chip'
 import HomeSearch from './components/home-search'
 import FeaturedExperiences from './components/featured-experiences'
 
-const categories = [
+type ExperienceCategory =
+  | 'Praia'
+  | 'Aventura'
+  | 'Natureza'
+  | 'Cultura'
+  | 'Gastronomia'
+
+const categories: ExperienceCategory[] = [
   'Praia',
   'Aventura',
   'Natureza',
@@ -49,7 +56,11 @@ const popularExperiences = [
   },
 ]
 
-const weekendPlaces = [
+const weekendPlaces: {
+  name: string
+  location: string
+  type: ExperienceCategory
+}[] = [
   {
     name: 'Mussulo',
     location: 'Luanda',

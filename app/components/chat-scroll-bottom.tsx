@@ -22,12 +22,14 @@ export default function ChatScrollBottom({
 
     if (!bottomElement) return
 
-    const scrollContainer =
+    const element =
       bottomElement.closest('[data-chat-scroll]')
 
-    if (!(scrollContainer instanceof HTMLElement)) {
+    if (!(element instanceof HTMLElement)) {
       return
     }
+
+    const scrollContainer: HTMLElement = element
 
     function checkPosition() {
       const distanceFromBottom =

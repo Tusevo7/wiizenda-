@@ -2,8 +2,17 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowLeft, CheckCircle2, FileText, Upload } from 'lucide-react'
-import { ChangeEvent, useEffect, useState } from 'react'
+import {
+  ArrowLeft,
+  CheckCircle2,
+  FileText,
+  Upload,
+} from 'lucide-react'
+import {
+  ChangeEvent,
+  useEffect,
+  useState,
+} from 'react'
 
 import { createClient } from '@/lib/supabase/client'
 
@@ -19,7 +28,7 @@ type Booking = {
         location: string | null
         city: string | null
         province: string | null
-      }
+      }[]
     | null
 }
 
@@ -78,25 +87,27 @@ export default function PaymentPage({
         return
       }
 
-      const { data: bookingData, error: bookingError } =
-        await supabase
-          .from('bookings')
-          .select(`
-            id,
-            booking_date,
-            guests,
-            total_price,
-            status,
-            experiences (
-              title,
-              location,
-              city,
-              province
-            )
-          `)
-          .eq('id', id)
-          .eq('user_id', user.id)
-          .maybeSingle()
+      const {
+        data: bookingData,
+        error: bookingError,
+      } = await supabase
+        .from('bookings')
+        .select(`
+          id,
+          booking_date,
+          guests,
+          total_price,
+          status,
+          experiences (
+            title,
+            location,
+            city,
+            province
+          )
+        `)
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .maybeSingle()
 
       if (bookingError || !bookingData) {
         setError(
@@ -106,20 +117,22 @@ export default function PaymentPage({
         return
       }
 
-      const { data: paymentData, error: paymentError } =
-        await supabase
-          .from('payments')
-          .select(`
-            id,
-            amount,
-            currency,
-            status,
-            reference,
-            proof_path
-          `)
-          .eq('booking_id', id)
-          .eq('user_id', user.id)
-          .maybeSingle()
+      const {
+        data: paymentData,
+        error: paymentError,
+      } = await supabase
+        .from('payments')
+        .select(`
+          id,
+          amount,
+          currency,
+          status,
+          reference,
+          proof_path
+        `)
+        .eq('booking_id', id)
+        .eq('user_id', user.id)
+        .maybeSingle()
 
       if (paymentError || !paymentData) {
         setError(
@@ -152,9 +165,11 @@ export default function PaymentPage({
     if (booking?.status === 'expired') {
       event.target.value = ''
       setSelectedFile(null)
+
       setError(
         'Esta reserva expirou. Já não é possível enviar um comprovativo.',
       )
+
       return
     }
 
@@ -248,26 +263,26 @@ export default function PaymentPage({
       selectedFile.name
         .split('.')
         .pop()
-        ?.toLowerCase() ||
-      'jpg'
+        ?.toLowerCase() || 'jpg'
 
     const path =
       `${user.id}/` +
       `${booking.id}/` +
       `comprovativo-${Date.now()}.${extension}`
 
-    const { error: uploadError } =
-      await supabase.storage
-        .from('payment-proofs')
-        .upload(
-          path,
-          selectedFile,
-          {
-            cacheControl: '3600',
-            upsert: false,
-            contentType: selectedFile.type,
-          },
-        )
+    const {
+      error: uploadError,
+    } = await supabase.storage
+      .from('payment-proofs')
+      .upload(
+        path,
+        selectedFile,
+        {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: selectedFile.type,
+        },
+      )
 
     if (uploadError) {
       console.error(uploadError)
@@ -280,16 +295,17 @@ export default function PaymentPage({
       return
     }
 
-    const { error: updateError } =
-      await supabase
-        .from('payments')
-        .update({
-          proof_path: path,
-          status: 'submitted',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', payment.id)
-        .eq('user_id', user.id)
+    const {
+      error: updateError,
+    } = await supabase
+      .from('payments')
+      .update({
+        proof_path: path,
+        status: 'submitted',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', payment.id)
+      .eq('user_id', user.id)
 
     if (updateError) {
       console.error(updateError)
@@ -361,7 +377,8 @@ export default function PaymentPage({
     return null
   }
 
-  const experience = booking.experiences
+  const experience =
+    booking.experiences?.[0] ?? null
 
   const isExpired =
     booking.status === 'expired'
@@ -377,9 +394,7 @@ export default function PaymentPage({
 
   return (
     <main className="min-h-screen bg-gray-50">
-
       <section className="mx-auto max-w-2xl px-5 py-8 sm:px-6">
-
         <Link
           href="/bookings"
           className="inline-flex items-center gap-2 text-sm font-bold text-gray-500 transition hover:text-gray-900"
@@ -404,11 +419,8 @@ export default function PaymentPage({
           </p>
         </div>
 
-        {/* RESUMO */}
         <div className="mt-6 rounded-3xl border border-gray-100 bg-white p-6 shadow-sm">
-
           <div className="space-y-4">
-
             <div className="flex justify-between gap-4">
               <span className="text-sm text-gray-500">
                 Data
@@ -455,16 +467,12 @@ export default function PaymentPage({
                 </strong>
               </div>
             </div>
-
           </div>
         </div>
 
-        {/* RESERVA EXPIRADA */}
         {isExpired && (
           <div className="mt-5 rounded-3xl border border-red-100 bg-red-50 p-6">
-
             <div className="flex items-start gap-3">
-
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100">
                 <CheckCircle2
                   size={21}
@@ -490,18 +498,13 @@ export default function PaymentPage({
                   Voltar às reservas
                 </Link>
               </div>
-
             </div>
-
           </div>
         )}
 
-        {/* ESTADO PAGO */}
         {!isExpired && isPaid && (
           <div className="mt-5 rounded-3xl border border-green-100 bg-green-50 p-6">
-
             <div className="flex items-start gap-3">
-
               <CheckCircle2
                 className="mt-0.5 shrink-0 text-green-600"
                 size={22}
@@ -517,18 +520,13 @@ export default function PaymentPage({
                   O próximo passo será a emissão do teu bilhete.
                 </p>
               </div>
-
             </div>
-
           </div>
         )}
 
-        {/* COMPROVATIVO ENVIADO */}
         {!isExpired && isSubmitted && (
           <div className="mt-5 rounded-3xl border border-orange-100 bg-orange-50 p-6">
-
             <div className="flex items-start gap-3">
-
               <CheckCircle2
                 className="mt-0.5 shrink-0 text-orange-600"
                 size={22}
@@ -544,16 +542,12 @@ export default function PaymentPage({
                   Aguarda a confirmação do pagamento.
                 </p>
               </div>
-
             </div>
-
           </div>
         )}
 
-        {/* PAGAMENTO REJEITADO */}
         {!isExpired && isRejected && (
           <div className="mt-5 rounded-3xl border border-red-100 bg-red-50 p-6">
-
             <p className="font-black text-red-700">
               Comprovativo rejeitado
             </p>
@@ -561,20 +555,16 @@ export default function PaymentPage({
             <p className="mt-1 text-sm text-red-700/80">
               Envia um novo comprovativo de pagamento.
             </p>
-
           </div>
         )}
 
-        {/* INFORMAÇÕES DE PAGAMENTO */}
         {!isExpired && !isPaid && (
           <div className="mt-5 rounded-3xl bg-white p-6 shadow-sm">
-
             <h2 className="text-lg font-black">
               Como pagar
             </h2>
 
             <div className="mt-4 rounded-2xl bg-gray-50 p-4">
-
               <p className="text-sm leading-6 text-gray-600">
                 Faz o pagamento através do método indicado
                 pela agência e guarda o comprovativo.
@@ -587,18 +577,13 @@ export default function PaymentPage({
               <p className="mt-1 text-lg font-black text-orange-500">
                 {payment.reference}
               </p>
-
             </div>
-
           </div>
         )}
 
-        {/* UPLOAD */}
         {!isExpired && !isPaid && (
           <div className="mt-5 rounded-3xl bg-white p-6 shadow-sm">
-
             <div className="flex items-center gap-3">
-
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-50">
                 <FileText
                   size={21}
@@ -615,7 +600,6 @@ export default function PaymentPage({
                   JPG, PNG ou PDF · máximo 5 MB
                 </p>
               </div>
-
             </div>
 
             <label
@@ -646,9 +630,7 @@ export default function PaymentPage({
 
             {selectedFile && (
               <div className="mt-4 rounded-2xl bg-gray-50 p-4">
-
                 <div className="flex items-center gap-3">
-
                   <FileText
                     size={20}
                     className="shrink-0 text-orange-500"
@@ -660,12 +642,15 @@ export default function PaymentPage({
                     </p>
 
                     <p className="text-xs text-gray-500">
-                      {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                      {(
+                        selectedFile.size /
+                        1024 /
+                        1024
+                      ).toFixed(2)}{' '}
+                      MB
                     </p>
                   </div>
-
                 </div>
-
               </div>
             )}
 
@@ -697,11 +682,10 @@ export default function PaymentPage({
                 ? 'A enviar...'
                 : 'Enviar comprovativo'}
             </button>
-
           </div>
         )}
-
       </section>
     </main>
   )
 }
+
