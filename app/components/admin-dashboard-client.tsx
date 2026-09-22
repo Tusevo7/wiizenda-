@@ -1,4 +1,3 @@
-
 'use client'
 
 import {
@@ -12,6 +11,7 @@ import {
   LayoutDashboard,
   LockKeyhole,
   Medal,
+  Music,
   RotateCcw,
   Settings,
   ShieldCheck,
@@ -21,7 +21,7 @@ import {
   Users,
   XCircle,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
@@ -30,6 +30,7 @@ type MenuKey =
   | 'users'
   | 'companies'
   | 'content'
+  | 'music'
   | 'bookings'
   | 'points'
   | 'notifications'
@@ -113,6 +114,20 @@ type AdminExperience = {
     | null
 }
 
+type MusicTrack = {
+  id: string
+  title: string
+  artist: string | null
+  genre: string | null
+  audio_url: string
+  cover_url: string | null
+  duration_seconds: number | null
+  preview_start_seconds: number | null
+  preview_duration_seconds: number | null
+  is_active: boolean
+  created_at: string
+}
+
 type DashboardProps = {
   stats: {
     totalUsers: number
@@ -181,6 +196,11 @@ const menuSections = [
         key: 'content' as MenuKey,
         label: 'Conteúdo',
         icon: FileText,
+      },
+      {
+        key: 'music' as MenuKey,
+        label: 'Músicas',
+        icon: Music,
       },
       {
         key: 'bookings' as MenuKey,
@@ -257,6 +277,19 @@ function formatDate(date: string | null) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(date))
+}
+
+function formatDuration(seconds: number | null) {
+  if (!seconds || seconds <= 0) {
+    return '—'
+  }
+
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = Math.floor(seconds % 60)
+
+  return `${minutes}:${remainingSeconds
+    .toString()
+    .padStart(2, '0')}`
 }
 
 function getAgency(
@@ -1105,7 +1138,1190 @@ function ContentSection({
     </div>
   )
 }
+function MusicSection() {
+  const supabase = createClient()
 
+  const [tracks, setTracks] =
+    useState<MusicTrack[]>([])
+
+  const [loading, setLoading] =
+    useState(true)
+
+  const [uploading, setUploading] =
+    useState(false)
+
+  const [deletingId, setDeletingId] =
+    useState<string | null>(null)
+
+  const [togglingId, setTogglingId] =
+    useState<string | null>(null)
+
+  const [showUploadModal, setShowUploadModal] =
+    useState(false)
+
+  const [selectedFile, setSelectedFile] =
+    useState<File | null>(null)
+
+  const [selectedCover, setSelectedCover] =
+    useState<File | null>(null)
+
+  const [coverPreview, setCoverPreview] =
+    useState<string | null>(null)
+
+  const [title, setTitle] =
+    useState('')
+
+  const [artist, setArtist] =
+    useState('')
+
+  const [genre, setGenre] =
+    useState('')
+
+  const [uploadError, setUploadError] =
+    useState('')
+
+  const [playingId, setPlayingId] =
+    useState<string | null>(null)
+
+  const [audio, setAudio] =
+    useState<HTMLAudioElement | null>(null)
+
+  async function loadTracks() {
+    setLoading(true)
+
+    const { data, error } =
+      await supabase
+        .from('music_tracks')
+        .select(`
+          id,
+          title,
+          artist,
+          genre,
+          audio_url,
+          cover_url,
+          duration_seconds,
+          preview_start_seconds,
+          preview_duration_seconds,
+          is_active,
+          created_at
+        `)
+        .order(
+          'created_at',
+          {
+            ascending: false,
+          },
+        )
+
+    if (error) {
+      console.error(
+        'Erro ao carregar músicas:',
+        error,
+      )
+
+      setTracks([])
+    } else {
+      setTracks(
+        (data ?? []) as MusicTrack[],
+      )
+    }
+
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    void loadTracks()
+
+    return () => {
+      if (audio) {
+        audio.pause()
+        audio.currentTime = 0
+      }
+
+      if (coverPreview) {
+        URL.revokeObjectURL(
+          coverPreview,
+        )
+      }
+    }
+  }, [])
+
+  function resetUploadForm() {
+    setSelectedFile(null)
+
+    setTitle('')
+
+    setArtist('')
+
+    setGenre('')
+
+    setUploadError('')
+
+    if (coverPreview) {
+      URL.revokeObjectURL(
+        coverPreview,
+      )
+    }
+
+    setSelectedCover(null)
+
+    setCoverPreview(null)
+  }
+
+  function closeUploadModal() {
+    if (uploading) {
+      return
+    }
+
+    resetUploadForm()
+
+    setShowUploadModal(false)
+  }
+
+  function handleCoverChange(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const file =
+      event.target.files?.[0] ??
+      null
+
+    if (!file) {
+      return
+    }
+
+    if (
+      !file.type.startsWith('image/')
+    ) {
+      setUploadError(
+        'A capa deve ser uma imagem.',
+      )
+
+      event.target.value = ''
+
+      return
+    }
+
+    if (
+      file.size >
+      5 * 1024 * 1024
+    ) {
+      setUploadError(
+        'A capa não pode ultrapassar 5 MB.',
+      )
+
+      event.target.value = ''
+
+      return
+    }
+
+    setUploadError('')
+
+    if (coverPreview) {
+      URL.revokeObjectURL(
+        coverPreview,
+      )
+    }
+
+    setSelectedCover(file)
+
+    setCoverPreview(
+      URL.createObjectURL(file),
+    )
+  }
+
+  function handleAudioChange(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const file =
+      event.target.files?.[0] ??
+      null
+
+    if (!file) {
+      setSelectedFile(null)
+      return
+    }
+
+    if (
+      file.type !== 'audio/mpeg' &&
+      !file.name
+        .toLowerCase()
+        .endsWith('.mp3')
+    ) {
+      setUploadError(
+        'Apenas ficheiros MP3 são permitidos.',
+      )
+
+      event.target.value = ''
+
+      return
+    }
+
+    if (
+      file.size >
+      30 * 1024 * 1024
+    ) {
+      setUploadError(
+        'O ficheiro MP3 não pode ultrapassar 30 MB.',
+      )
+
+      event.target.value = ''
+
+      return
+    }
+
+    setUploadError('')
+
+    setSelectedFile(file)
+  }
+
+  async function readAudioDuration(
+    file: File,
+  ) {
+    return await new Promise<
+      number | null
+    >((resolve) => {
+      const objectUrl =
+        URL.createObjectURL(file)
+
+      const temporaryAudio =
+        document.createElement('audio')
+
+      temporaryAudio.preload =
+        'metadata'
+
+      temporaryAudio.onloadedmetadata =
+        () => {
+          const duration =
+            Number.isFinite(
+              temporaryAudio.duration,
+            )
+              ? Math.round(
+                  temporaryAudio.duration,
+                )
+              : null
+
+          URL.revokeObjectURL(
+            objectUrl,
+          )
+
+          resolve(duration)
+        }
+
+      temporaryAudio.onerror = () => {
+        URL.revokeObjectURL(
+          objectUrl,
+        )
+
+        resolve(null)
+      }
+
+      temporaryAudio.src =
+        objectUrl
+    })
+  }
+
+  async function handleUpload() {
+    setUploadError('')
+
+    if (!selectedFile) {
+      setUploadError(
+        'Seleciona um ficheiro MP3.',
+      )
+
+      return
+    }
+
+    if (
+      selectedFile.type !==
+        'audio/mpeg' &&
+      !selectedFile.name
+        .toLowerCase()
+        .endsWith('.mp3')
+    ) {
+      setUploadError(
+        'Apenas ficheiros MP3 são permitidos.',
+      )
+
+      return
+    }
+
+    if (
+      selectedFile.size >
+      30 * 1024 * 1024
+    ) {
+      setUploadError(
+        'O ficheiro MP3 não pode ultrapassar 30 MB.',
+      )
+
+      return
+    }
+
+    if (!selectedCover) {
+      setUploadError(
+        'Seleciona uma capa para a música.',
+      )
+
+      return
+    }
+
+    if (!title.trim()) {
+      setUploadError(
+        'Informe o título da música.',
+      )
+
+      return
+    }
+
+    setUploading(true)
+
+    let audioPath: string | null =
+      null
+
+    let coverPath: string | null =
+      null
+
+    try {
+      const duration =
+        await readAudioDuration(
+          selectedFile,
+        )
+
+      const safeAudioName =
+        selectedFile.name
+          .replace(
+            /\.mp3$/i,
+            '',
+          )
+          .replace(
+            /[^a-zA-Z0-9-_]/g,
+            '-',
+          )
+          .replace(
+            /-+/g,
+            '-',
+          )
+          .replace(
+            /^-|-$/g,
+            '',
+          ) ||
+        'music'
+
+      const audioFileName =
+        `${Date.now()}-${safeAudioName}.mp3`
+
+      audioPath =
+        `tracks/${audioFileName}`
+
+      const {
+        error: audioUploadError,
+      } =
+        await supabase.storage
+          .from('music')
+          .upload(
+            audioPath,
+            selectedFile,
+            {
+              cacheControl:
+                '3600',
+              upsert: false,
+              contentType:
+                'audio/mpeg',
+            },
+          )
+
+      if (audioUploadError) {
+        throw new Error(
+          `Erro no upload do MP3: ${audioUploadError.message}`,
+        )
+      }
+
+      const {
+        data: audioPublicData,
+      } =
+        supabase.storage
+          .from('music')
+          .getPublicUrl(
+            audioPath,
+          )
+
+      const audioUrl =
+        audioPublicData.publicUrl
+
+      const coverExtension =
+        selectedCover.name
+          .split('.')
+          .pop()
+          ?.toLowerCase() ||
+        'jpg'
+
+      const safeCoverName =
+        selectedCover.name
+          .replace(
+            /\.[^/.]+$/,
+            '',
+          )
+          .replace(
+            /[^a-zA-Z0-9-_]/g,
+            '-',
+          )
+          .replace(
+            /-+/g,
+            '-',
+          )
+          .replace(
+            /^-|-$/g,
+            '',
+          ) ||
+        'cover'
+
+      const coverFileName =
+        `${Date.now()}-${safeCoverName}.${coverExtension}`
+
+      coverPath =
+        `covers/${coverFileName}`
+
+      const {
+        error: coverUploadError,
+      } =
+        await supabase.storage
+          .from('music')
+          .upload(
+            coverPath,
+            selectedCover,
+            {
+              cacheControl:
+                '3600',
+              upsert: false,
+              contentType:
+                selectedCover.type ||
+                'image/jpeg',
+            },
+          )
+
+      if (coverUploadError) {
+        throw new Error(
+          `Erro no upload da capa: ${coverUploadError.message}`,
+        )
+      }
+
+      const {
+        data: coverPublicData,
+      } =
+        supabase.storage
+          .from('music')
+          .getPublicUrl(
+            coverPath,
+          )
+
+      const coverUrl =
+        coverPublicData.publicUrl
+
+      const {
+        error: insertError,
+      } =
+        await supabase
+          .from('music_tracks')
+          .insert({
+            title:
+              title.trim(),
+
+            artist:
+              artist.trim() ||
+              null,
+
+            genre:
+              genre.trim() ||
+              null,
+
+            audio_url:
+              audioUrl,
+
+            cover_url:
+              coverUrl,
+
+            duration_seconds:
+              duration,
+
+            preview_start_seconds:
+              0,
+
+            preview_duration_seconds:
+              30,
+
+            is_active:
+              true,
+          })
+
+      if (insertError) {
+        throw new Error(
+          `Erro ao guardar a música: ${insertError.message}`,
+        )
+      }
+
+      resetUploadForm()
+
+      setShowUploadModal(false)
+
+      await loadTracks()
+    } catch (error) {
+      console.error(
+        'Erro ao fazer upload da música:',
+        error,
+      )
+
+      if (audioPath) {
+        await supabase.storage
+          .from('music')
+          .remove([
+            audioPath,
+          ])
+      }
+
+      if (coverPath) {
+        await supabase.storage
+          .from('music')
+          .remove([
+            coverPath,
+          ])
+      }
+
+      const errorMessage =
+        error &&
+        typeof error === 'object' &&
+        'message' in error
+          ? String(
+              (
+                error as {
+                  message?: unknown
+                }
+              ).message,
+            )
+          : String(error)
+
+      setUploadError(
+        errorMessage ||
+          'Não foi possível carregar a música.',
+      )
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function toggleTrack(
+    track: MusicTrack,
+  ) {
+    setTogglingId(track.id)
+
+    const {
+      error,
+    } =
+      await supabase
+        .from('music_tracks')
+        .update({
+          is_active:
+            !track.is_active,
+        })
+        .eq(
+          'id',
+          track.id,
+        )
+
+    if (error) {
+      console.error(
+        'Erro ao alterar estado da música:',
+        error,
+      )
+
+      alert(
+        error.message ||
+          'Não foi possível alterar o estado da música.',
+      )
+    } else {
+      setTracks(
+        (current) =>
+          current.map(
+            (item) =>
+              item.id ===
+              track.id
+                ? {
+                    ...item,
+                    is_active:
+                      !item.is_active,
+                  }
+                : item,
+          ),
+      )
+    }
+
+    setTogglingId(null)
+  }
+
+  function getStoragePath(
+    fileUrl: string,
+  ) {
+    const marker =
+      '/storage/v1/object/public/music/'
+
+    const index =
+      fileUrl.indexOf(marker)
+
+    if (index === -1) {
+      return null
+    }
+
+    return decodeURIComponent(
+      fileUrl.slice(
+        index +
+          marker.length,
+      ),
+    )
+  }
+
+  async function deleteTrack(
+    track: MusicTrack,
+  ) {
+    const confirmed =
+      window.confirm(
+        `Tem certeza que deseja eliminar "${track.title}"?`,
+      )
+
+    if (!confirmed) {
+      return
+    }
+
+    setDeletingId(track.id)
+
+    try {
+      const audioStoragePath =
+        getStoragePath(
+          track.audio_url,
+        )
+
+      const coverStoragePath =
+        track.cover_url
+          ? getStoragePath(
+              track.cover_url,
+            )
+          : null
+
+      const filesToDelete =
+        [
+          audioStoragePath,
+          coverStoragePath,
+        ].filter(
+          (
+            path,
+          ): path is string =>
+            Boolean(path),
+        )
+
+      if (
+        filesToDelete.length >
+        0
+      ) {
+        const {
+          error: storageError,
+        } =
+          await supabase.storage
+            .from('music')
+            .remove(
+              filesToDelete,
+            )
+
+        if (storageError) {
+          console.error(
+            'Erro ao eliminar ficheiros da Storage:',
+            storageError,
+          )
+        }
+      }
+
+      const {
+        error: deleteError,
+      } =
+        await supabase
+          .from('music_tracks')
+          .delete()
+          .eq(
+            'id',
+            track.id,
+          )
+
+      if (deleteError) {
+        throw deleteError
+      }
+
+      if (
+        playingId ===
+        track.id
+      ) {
+        if (audio) {
+          audio.pause()
+          audio.currentTime = 0
+        }
+
+        setAudio(null)
+
+        setPlayingId(null)
+      }
+
+      setTracks(
+        (current) =>
+          current.filter(
+            (item) =>
+              item.id !==
+              track.id,
+          ),
+      )
+    } catch (error) {
+      console.error(
+        'Erro ao eliminar música:',
+        error,
+      )
+
+      const errorMessage =
+        error &&
+        typeof error === 'object' &&
+        'message' in error
+          ? String(
+              (
+                error as {
+                  message?: unknown
+                }
+              ).message,
+            )
+          : String(error)
+
+      alert(
+        errorMessage ||
+          'Não foi possível eliminar a música.',
+      )
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  function togglePlay(
+    track: MusicTrack,
+  ) {
+    if (
+      playingId ===
+      track.id
+    ) {
+      if (audio) {
+        audio.pause()
+        audio.currentTime = 0
+      }
+
+      setAudio(null)
+
+      setPlayingId(null)
+
+      return
+    }
+
+    if (audio) {
+      audio.pause()
+      audio.currentTime = 0
+    }
+
+    const newAudio =
+      new Audio(
+        track.audio_url,
+      )
+
+    newAudio.currentTime =
+      track.preview_start_seconds ||
+      0
+
+    newAudio.onended = () => {
+      setPlayingId(null)
+      setAudio(null)
+    }
+
+    newAudio.onerror = () => {
+      setPlayingId(null)
+      setAudio(null)
+
+      alert(
+        'Não foi possível reproduzir esta música.',
+      )
+    }
+
+    void newAudio.play()
+
+    setAudio(newAudio)
+
+    setPlayingId(track.id)
+  }
+
+  return (
+    <section className="space-y-6">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div>
+          <h2 className="text-2xl font-black text-gray-950">
+            Música
+          </h2>
+
+          <p className="mt-1 text-sm text-gray-500">
+            Gere as músicas disponíveis para acompanhar as experiências.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            resetUploadForm()
+            setShowUploadModal(true)
+          }}
+          className="inline-flex items-center justify-center rounded-xl bg-orange-500 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-orange-600"
+        >
+          + Adicionar música
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="rounded-2xl border border-gray-100 bg-white p-10 text-center">
+          <p className="text-sm text-gray-500">
+            A carregar músicas...
+          </p>
+        </div>
+      ) : tracks.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-10 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-orange-50 text-2xl">
+            🎵
+          </div>
+
+          <h3 className="mt-4 font-bold text-gray-950">
+            Ainda não existem músicas
+          </h3>
+
+          <p className="mt-1 text-sm text-gray-500">
+            Adiciona a primeira música para disponibilizá-la nas experiências.
+          </p>
+        </div>
+      ) : (
+        <div className="grid gap-4">
+          {tracks.map(
+            (track) => (
+              <div
+                key={track.id}
+                className="flex flex-col gap-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:flex-row sm:items-center"
+              >
+                <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-gray-100">
+                  {track.cover_url ? (
+                    <img
+                      src={
+                        track.cover_url
+                      }
+                      alt={
+                        track.title
+                      }
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-2xl">
+                      🎵
+                    </div>
+                  )}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="truncate font-bold text-gray-950">
+                      {track.title}
+                    </h3>
+
+                    <span
+                      className={`rounded-full px-2 py-1 text-[10px] font-bold ${
+                        track.is_active
+                          ? 'bg-green-50 text-green-700'
+                          : 'bg-gray-100 text-gray-500'
+                      }`}
+                    >
+                      {track.is_active
+                        ? 'Ativa'
+                        : 'Inativa'}
+                    </span>
+                  </div>
+
+                  <p className="mt-1 text-sm text-gray-500">
+                    {track.artist ||
+                      'Artista não informado'}
+                  </p>
+
+                  {track.genre && (
+                    <p className="mt-1 text-xs text-gray-400">
+                      {track.genre}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      togglePlay(
+                        track,
+                      )
+                    }
+                    className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-bold text-gray-700 transition hover:bg-gray-50"
+                  >
+                    {playingId ===
+                    track.id
+                      ? 'Parar'
+                      : 'Ouvir'}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={
+                      togglingId ===
+                      track.id
+                    }
+                    onClick={() =>
+                      void toggleTrack(
+                        track,
+                      )
+                    }
+                    className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {togglingId ===
+                    track.id
+                      ? '...'
+                      : track.is_active
+                        ? 'Desativar'
+                        : 'Ativar'}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={
+                      deletingId ===
+                      track.id
+                    }
+                    onClick={() =>
+                      void deleteTrack(
+                        track,
+                      )
+                    }
+                    className="rounded-xl bg-red-50 px-4 py-2 text-sm font-bold text-red-600 transition hover:bg-red-100 disabled:opacity-50"
+                  >
+                    {deletingId ===
+                    track.id
+                      ? 'A eliminar...'
+                      : 'Eliminar'}
+                  </button>
+                </div>
+              </div>
+            ),
+          )}
+        </div>
+      )}
+
+      {showUploadModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-5">
+              <div>
+                <h3 className="text-xl font-black text-gray-950">
+                  Adicionar música
+                </h3>
+
+                <p className="mt-1 text-xs text-gray-500">
+                  Música para utilizar nas experiências.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={
+                  closeUploadModal
+                }
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-500 transition hover:bg-gray-200"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="space-y-5 p-6">
+              <div>
+                <label className="mb-2 block text-sm font-bold text-gray-800">
+                  Ficheiro MP3
+                </label>
+
+                <input
+                  type="file"
+                  accept=".mp3,audio/mpeg"
+                  onChange={
+                    handleAudioChange
+                  }
+                  disabled={
+                    uploading
+                  }
+                  className="block w-full rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm"
+                />
+
+                {selectedFile && (
+                  <p className="mt-2 text-xs text-gray-500">
+                    {selectedFile.name}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-bold text-gray-800">
+                  Capa da música
+                </label>
+
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                  <div className="h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-gray-100">
+                    {coverPreview ? (
+                      <img
+                        src={
+                          coverPreview
+                        }
+                        alt="Pré-visualização da capa"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full flex-col items-center justify-center text-gray-400">
+                        <span className="text-3xl">
+                          🖼️
+                        </span>
+
+                        <span className="mt-1 text-[10px]">
+                          Sem capa
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex-1">
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/avif"
+                      onChange={
+                        handleCoverChange
+                      }
+                      disabled={
+                        uploading
+                      }
+                      className="block w-full rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm"
+                    />
+
+                    <p className="mt-2 text-xs text-gray-400">
+                      JPG, PNG, WEBP ou AVIF. Máximo 5 MB.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-bold text-gray-800">
+                  Título *
+                </label>
+
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(event) =>
+                    setTitle(
+                      event.target.value,
+                    )
+                  }
+                  placeholder="Ex.: Minha Terra"
+                  disabled={
+                    uploading
+                  }
+                  className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-bold text-gray-800">
+                  Artista
+                </label>
+
+                <input
+                  type="text"
+                  value={artist}
+                  onChange={(event) =>
+                    setArtist(
+                      event.target.value,
+                    )
+                  }
+                  placeholder="Ex.: Ruy Mingas"
+                  disabled={
+                    uploading
+                  }
+                  className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-bold text-gray-800">
+                  Género
+                </label>
+
+                <input
+                  type="text"
+                  value={genre}
+                  onChange={(event) =>
+                    setGenre(
+                      event.target.value,
+                    )
+                  }
+                  placeholder="Ex.: Música Angolana"
+                  disabled={
+                    uploading
+                  }
+                  className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                />
+              </div>
+
+              {uploadError && (
+                <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-sm text-red-600">
+                  {uploadError}
+                </div>
+              )}
+
+              <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  disabled={
+                    uploading
+                  }
+                  onClick={
+                    closeUploadModal
+                  }
+                  className="rounded-xl border border-gray-200 px-5 py-3 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  type="button"
+                  disabled={
+                    uploading
+                  }
+                  onClick={() =>
+                    void handleUpload()
+                  }
+                  className="rounded-xl bg-orange-500 px-5 py-3 text-sm font-bold text-white transition hover:bg-orange-600 disabled:cursor-wait disabled:opacity-60"
+                >
+                  {uploading
+                    ? 'A carregar...'
+                    : 'Carregar música'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
 export default function AdminDashboardClient({
   stats,
   growthData,
@@ -1666,11 +2882,18 @@ export default function AdminDashboardClient({
               />
             )}
 
+            {/* MÚSICAS */}
+
+            {activeMenu === 'music' && (
+              <MusicSection />
+            )}
+
             {/* OUTROS */}
 
             {activeMenu !== 'overview' &&
               activeMenu !== 'companies' &&
-              activeMenu !== 'content' && (
+              activeMenu !== 'content' &&
+              activeMenu !== 'music' && (
                 <div className="mx-auto flex min-h-[500px] max-w-[1500px] items-center justify-center">
                   <div className="text-center">
                     <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50 text-orange-500">

@@ -12,6 +12,13 @@ type Experience = {
   activity_start_at: string
   activity_end_at: string
   agency_id: string | null
+
+  // MÚSICA
+  music_title: string | null
+  music_artist: string | null
+  music_url: string | null
+  music_start_seconds: number | null
+  music_duration_seconds: number | null
 }
 
 type Agency = {
@@ -30,7 +37,11 @@ function shuffleExperiences(
 ) {
   const shuffled = [...experiences]
 
-  for (let i = shuffled.length - 1; i > 0; i--) {
+  for (
+    let i = shuffled.length - 1;
+    i > 0;
+    i--
+  ) {
     const randomIndex = Math.floor(
       Math.random() * (i + 1),
     )
@@ -52,6 +63,12 @@ export default async function FeaturedExperiences() {
 
   const now = new Date().toISOString()
 
+  /*
+   * =========================================================
+   * CARREGAR EXPERIÊNCIAS
+   * =========================================================
+   */
+
   const {
     data: experiences,
     error,
@@ -66,7 +83,12 @@ export default async function FeaturedExperiences() {
       cover_image,
       activity_start_at,
       activity_end_at,
-      agency_id
+      agency_id,
+      music_title,
+      music_artist,
+      music_url,
+      music_start_seconds,
+      music_duration_seconds
     `)
     .eq('status', 'published')
     .gt('activity_end_at', now)
@@ -80,7 +102,16 @@ export default async function FeaturedExperiences() {
     return null
   }
 
-  if (!experiences || experiences.length === 0) {
+  /*
+   * =========================================================
+   * NENHUMA EXPERIÊNCIA
+   * =========================================================
+   */
+
+  if (
+    !experiences ||
+    experiences.length === 0
+  ) {
     return (
       <section className="mx-auto max-w-7xl px-5 pb-12 sm:px-6 lg:px-8">
         <div className="rounded-2xl bg-gray-50 p-8 text-center">
@@ -100,24 +131,25 @@ export default async function FeaturedExperiences() {
     experiences as Experience[]
 
   /*
-   * ============================
+   * =========================================================
    * CARREGAR AGÊNCIAS
-   * ============================
+   * =========================================================
    */
 
-  const agencyIds = Array.from(
-    new Set(
-      typedExperiences
-        .map(
-          (experience) =>
-            experience.agency_id,
-        )
-        .filter(
-          (id): id is string =>
-            Boolean(id),
-        ),
-    ),
-  )
+  const agencyIds =
+    Array.from(
+      new Set(
+        typedExperiences
+          .map(
+            (experience) =>
+              experience.agency_id,
+          )
+          .filter(
+            (id): id is string =>
+              Boolean(id),
+          ),
+      ),
+    )
 
   let agencies: Agency[] = []
 
@@ -132,7 +164,10 @@ export default async function FeaturedExperiences() {
         name,
         logo_url
       `)
-      .in('id', agencyIds)
+      .in(
+        'id',
+        agencyIds,
+      )
 
     if (agencyError) {
       console.error(
@@ -145,22 +180,26 @@ export default async function FeaturedExperiences() {
     }
   }
 
-  const agencyMap = new Map(
-    agencies.map((agency) => [
-      agency.id,
-      agency,
-    ]),
-  )
+  const agencyMap =
+    new Map(
+      agencies.map(
+        (agency) => [
+          agency.id,
+          agency,
+        ],
+      ),
+    )
 
   /*
-   * ============================
+   * =========================================================
    * CARREGAR AVALIAÇÕES
-   * ============================
+   * =========================================================
    */
 
   const experienceIds =
     typedExperiences.map(
-      (experience) => experience.id,
+      (experience) =>
+        experience.id,
     )
 
   const {
@@ -188,17 +227,17 @@ export default async function FeaturedExperiences() {
     (reviews ?? []) as Review[]
 
   /*
-   * ============================
+   * =========================================================
    * CALCULAR MÉDIA
-   * ============================
+   * =========================================================
    */
 
-  const ratingMap = new Map<
-    string,
-    number
-  >()
+  const ratingMap =
+    new Map<string, number>()
 
-  for (const experienceId of experienceIds) {
+  for (
+    const experienceId of experienceIds
+  ) {
     const experienceReviews =
       typedReviews.filter(
         (review) =>
@@ -207,7 +246,8 @@ export default async function FeaturedExperiences() {
       )
 
     if (
-      experienceReviews.length === 0
+      experienceReviews.length ===
+      0
     ) {
       ratingMap.set(
         experienceId,
@@ -220,7 +260,10 @@ export default async function FeaturedExperiences() {
     const total =
       experienceReviews.reduce(
         (sum, review) =>
-          sum + Number(review.rating),
+          sum +
+          Number(
+            review.rating,
+          ),
         0,
       )
 
@@ -230,14 +273,16 @@ export default async function FeaturedExperiences() {
 
     ratingMap.set(
       experienceId,
-      Number(average.toFixed(1)),
+      Number(
+        average.toFixed(1),
+      ),
     )
   }
 
   /*
-   * ============================
+   * =========================================================
    * ORDEM ALEATÓRIA
-   * ============================
+   * =========================================================
    */
 
   const shuffledExperiences =
@@ -245,23 +290,35 @@ export default async function FeaturedExperiences() {
       typedExperiences,
     )
 
+  /*
+   * =========================================================
+   * RENDER
+   * =========================================================
+   */
+
   return (
     <section className="mx-auto max-w-7xl px-5 pb-12 sm:px-6 lg:px-8">
 
-      {/* Cabeçalho */}
+      {/* ================================================= */}
+      {/* CABEÇALHO */}
+      {/* ================================================= */}
+
       <div className="flex items-end justify-between">
+
         <div>
+
           <div className="flex items-center gap-2">
-         
 
             <h2 className="text-xl font-black tracking-tight text-gray-950 sm:text-2xl">
               Descobre experiências
             </h2>
+
           </div>
 
           <p className="mt-1 text-sm text-gray-500">
             Passeios e atividades publicados pelas agências.
           </p>
+
         </div>
 
         <a
@@ -270,12 +327,18 @@ export default async function FeaturedExperiences() {
         >
           Ver tudo
         </a>
+
       </div>
 
-      {/* Feed */}
+      {/* ================================================= */}
+      {/* FEED */}
+      {/* ================================================= */}
+
       <div className="mt-6 flex gap-5 overflow-x-auto pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+
         {shuffledExperiences.map(
           (experience) => {
+
             const agency =
               experience.agency_id
                 ? agencyMap.get(
@@ -318,10 +381,26 @@ export default async function FeaturedExperiences() {
                   agency?.logo_url ||
                   null
                 }
+                musicTitle={
+                  experience.music_title
+                }
+                musicArtist={
+                  experience.music_artist
+                }
+                musicUrl={
+                  experience.music_url
+                }
+                musicStartSeconds={
+                  experience.music_start_seconds
+                }
+                musicDurationSeconds={
+                  experience.music_duration_seconds
+                }
               />
             )
           },
         )}
+
       </div>
 
     </section>
