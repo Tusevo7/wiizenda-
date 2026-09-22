@@ -1,3 +1,4 @@
+
 import AppShell from '../components/app-shell'
 import ExperienceCard from '../components/experience-card'
 import { createClient } from '@/lib/supabase/server'
@@ -50,7 +51,9 @@ export default async function FavoritesPage() {
         city,
         province,
         price,
-        cover_image
+        cover_image,
+        activity_start_at,
+        agency_id
       )
     `)
     .eq('user_id', user.id)
@@ -118,6 +121,60 @@ export default async function FavoritesPage() {
     }
   }
 
+  // ==========================================
+  // CARREGAR AGÊNCIAS
+  // ==========================================
+
+  const agencyIds = Array.from(
+    new Set(
+      experiences
+        .map(
+          (experience: any) =>
+            experience.agency_id,
+        )
+        .filter(
+          (id): id is string =>
+            Boolean(id),
+        ),
+    ),
+  )
+
+  let agencies: {
+    id: string
+    name: string
+    logo_url: string | null
+  }[] = []
+
+  if (agencyIds.length > 0) {
+    const {
+      data: agencyData,
+      error: agencyError,
+    } = await supabase
+      .from('agencies')
+      .select(`
+        id,
+        name,
+        logo_url
+      `)
+      .in('id', agencyIds)
+
+    if (agencyError) {
+      console.error(
+        'Erro ao carregar agências:',
+        agencyError,
+      )
+    } else {
+      agencies = agencyData || []
+    }
+  }
+
+  const agencyMap = new Map(
+    agencies.map((agency) => [
+      agency.id,
+      agency,
+    ]),
+  )
+
   return (
     <AppShell>
       <main className="min-h-screen">
@@ -156,17 +213,29 @@ export default async function FavoritesPage() {
                         experience.id,
                       ) || []
 
-                    const rating = ratings.length
-                      ? Number(
-                          (
-                            ratings.reduce(
-                              (total, value) =>
-                                total + value,
-                              0,
-                            ) / ratings.length
-                          ).toFixed(1),
-                        )
-                      : 0
+                    const rating =
+                      ratings.length
+                        ? Number(
+                            (
+                              ratings.reduce(
+                                (
+                                  total,
+                                  value,
+                                ) =>
+                                  total + value,
+                                0,
+                              ) /
+                              ratings.length
+                            ).toFixed(1),
+                          )
+                        : 0
+
+                    const agency =
+                      experience.agency_id
+                        ? agencyMap.get(
+                            experience.agency_id,
+                          )
+                        : null
 
                     return (
                       <ExperienceCard
@@ -177,7 +246,8 @@ export default async function FavoritesPage() {
                         location={
                           experience.location ||
                           experience.city ||
-                          experience.province
+                          experience.province ||
+                          'Angola'
                         }
                         price={`${Number(
                           experience.price,
@@ -188,6 +258,18 @@ export default async function FavoritesPage() {
                         image={
                           experience.cover_image ||
                           '/placeholder-experience.jpg'
+                        }
+                        activityStartAt={
+                          experience.activity_start_at ||
+                          ''
+                        }
+                        agencyName={
+                          agency?.name ||
+                          'Agência'
+                        }
+                        agencyLogo={
+                          agency?.logo_url ||
+                          null
                         }
                       />
                     )

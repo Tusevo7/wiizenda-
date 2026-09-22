@@ -1,3 +1,4 @@
+
 import AppShell from '@/app/components/app-shell'
 import ExperienceCard from '@/app/components/experience-card'
 import LocationFilter from '@/app/components/location-filter'
@@ -14,6 +15,12 @@ type SearchPageProps = {
     province?: string
     maxPrice?: string
   }>
+}
+
+type Agency = {
+  id: string
+  name: string
+  logo_url: string | null
 }
 
 export default async function SearchPage({
@@ -47,7 +54,9 @@ export default async function SearchPage({
         location,
         price,
         cover_image,
-        category
+        category,
+        activity_start_at,
+        agency_id
       `)
       .eq('status', 'published')
 
@@ -142,6 +151,61 @@ export default async function SearchPage({
     }
   }
 
+  // ==========================================
+  // CARREGAR AGÊNCIAS EM LOTE
+  // ==========================================
+
+  const agencyIds = Array.from(
+    new Set(
+      experiences
+        .map(
+          (experience) =>
+            experience.agency_id,
+        )
+        .filter(
+          (id): id is string =>
+            Boolean(id),
+        ),
+    ),
+  )
+
+  let agencies: Agency[] = []
+
+  if (agencyIds.length > 0) {
+    const {
+      data: agencyData,
+      error: agencyError,
+    } = await supabase
+      .from('agencies')
+      .select(`
+        id,
+        name,
+        logo_url
+      `)
+      .in('id', agencyIds)
+
+    if (agencyError) {
+      console.error(
+        'Erro ao carregar agências:',
+        agencyError,
+      )
+    } else {
+      agencies =
+        (agencyData || []) as Agency[]
+    }
+  }
+
+  const agencyMap = new Map(
+    agencies.map((agency) => [
+      agency.id,
+      agency,
+    ]),
+  )
+
+  // ==========================================
+  // TÍTULO
+  // ==========================================
+
   const heading = query
     ? `Resultados para "${query}"`
     : category
@@ -224,6 +288,13 @@ export default async function SearchPage({
                     )
                   : 0
 
+                const agency =
+                  experience.agency_id
+                    ? agencyMap.get(
+                        experience.agency_id,
+                      )
+                    : null
+
                 return (
                   <ExperienceCard
                     key={experience.id}
@@ -244,6 +315,18 @@ export default async function SearchPage({
                     image={
                       experience.cover_image ||
                       '/placeholder-experience.jpg'
+                    }
+                    activityStartAt={
+                      experience.activity_start_at ||
+                      ''
+                    }
+                    agencyName={
+                      agency?.name ||
+                      'Agência'
+                    }
+                    agencyLogo={
+                      agency?.logo_url ||
+                      null
                     }
                   />
                 )

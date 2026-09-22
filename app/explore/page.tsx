@@ -30,6 +30,7 @@ type Experience = {
 type Agency = {
   id: string
   name: string
+  logo_url: string | null
 }
 
 export default async function ExplorePage() {
@@ -148,7 +149,8 @@ export default async function ExplorePage() {
       .from('agencies')
       .select(`
         id,
-        name
+        name,
+        logo_url
       `)
       .in('id', agencyIds)
 
@@ -166,7 +168,7 @@ export default async function ExplorePage() {
   const agencyMap = new Map(
     agencies.map((agency) => [
       agency.id,
-      agency.name,
+      agency,
     ]),
   )
 
@@ -257,6 +259,13 @@ export default async function ExplorePage() {
                         )
                       : 0
 
+                  const agency =
+                    experience.agency_id
+                      ? agencyMap.get(
+                          experience.agency_id,
+                        )
+                      : null
+
                   return (
                     <ExperienceCard
                       key={experience.id}
@@ -284,12 +293,12 @@ export default async function ExplorePage() {
                         ''
                       }
                       agencyName={
-                        experience.agency_id
-                          ? agencyMap.get(
-                              experience.agency_id,
-                            ) ??
-                            'Agência'
-                          : 'Agência'
+                        agency?.name ||
+                        'Agência'
+                      }
+                      agencyLogo={
+                        agency?.logo_url ||
+                        null
                       }
                     />
                   )
