@@ -1,14 +1,19 @@
+
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import {
-  Building2,
-  MapPin,
-  Phone,
-  Mail,
-  Pencil,
   BadgeCheck,
+  Building2,
   Grid3X3,
+  Heart,
+  MapPin,
+  MessageCircle,
+  Bookmark,
+  Star,
+  Pencil,
+  Mail,
+  Phone,
 } from 'lucide-react'
 
 export default async function AgencyProfilePage() {
@@ -35,6 +40,10 @@ export default async function AgencyProfilePage() {
   if (profile?.role === 'admin') {
     redirect('/admin')
   }
+
+  // ==========================================
+  // AGÊNCIA
+  // ==========================================
 
   const { data: agency } = await supabase
     .from('agencies')
@@ -87,7 +96,7 @@ export default async function AgencyProfilePage() {
   }
 
   // ==========================================
-  // EXPERIÊNCIAS DA AGÊNCIA
+  // EXPERIÊNCIAS
   // ==========================================
 
   const { data: experiences } = await supabase
@@ -101,9 +110,8 @@ export default async function AgencyProfilePage() {
       location,
       city,
       province,
-      activity_start_at,
-      activity_end_at,
-      status
+      status,
+      activity_start_at
     `)
     .eq('agency_id', agency.id)
     .order('created_at', {
@@ -118,49 +126,195 @@ export default async function AgencyProfilePage() {
         experience.status === 'published',
     )
 
+  const experienceIds =
+    agencyExperiences.map(
+      (experience) => experience.id,
+    )
+
+  // ==========================================
+  // AVALIAÇÕES RECEBIDAS
+  // ==========================================
+
+  let receivedReviews: {
+    id: string
+    user_id: string
+    experience_id: string
+    rating: number
+    comment: string | null
+  }[] = []
+
+  if (experienceIds.length > 0) {
+    const { data } = await supabase
+      .from('reviews')
+      .select(`
+        id,
+        user_id,
+        experience_id,
+        rating,
+        comment
+      `)
+      .in(
+        'experience_id',
+        experienceIds,
+      )
+
+    receivedReviews = data || []
+  }
+
+  const averageRating =
+    receivedReviews.length > 0
+      ? Number(
+          (
+            receivedReviews.reduce(
+              (total, review) =>
+                total + Number(review.rating),
+              0,
+            ) / receivedReviews.length
+          ).toFixed(1),
+        )
+      : 0
+
+  // ==========================================
+  // PUBLICAÇÕES / REVIEWS DA AGÊNCIA
+  // ==========================================
+
+  const { data: agencyPosts } =
+    await supabase
+      .from('community_posts')
+      .select(`
+        id,
+        media_url,
+        media_type,
+        caption,
+        location,
+        rating,
+        created_at
+      `)
+      .eq('user_id', user.id)
+      .eq('post_type', 'agency')
+      .order('created_at', {
+        ascending: false,
+      })
+
+  const posts = agencyPosts || []
+
+  const postIds = posts.map(
+    (post) => post.id,
+  )
+
+  // ==========================================
+  // LIKES
+  // ==========================================
+
+  let totalLikes = 0
+
+  if (postIds.length > 0) {
+    const { count } = await supabase
+      .from('community_likes')
+      .select('id', {
+        count: 'exact',
+        head: true,
+      })
+      .in('post_id', postIds)
+
+    totalLikes = count || 0
+  }
+
+  // ==========================================
+  // COMENTÁRIOS
+  // ==========================================
+
+  let totalComments = 0
+
+  if (postIds.length > 0) {
+    const { count } = await supabase
+      .from('community_comments')
+      .select('id', {
+        count: 'exact',
+        head: true,
+      })
+      .in('post_id', postIds)
+
+    totalComments = count || 0
+  }
+
+  // ==========================================
+  // GUARDADOS
+  // ==========================================
+
+  let totalSaves = 0
+
+  if (postIds.length > 0) {
+    const { count } = await supabase
+      .from('community_saves')
+      .select('id', {
+        count: 'exact',
+        head: true,
+      })
+      .in('post_id', postIds)
+
+    totalSaves = count || 0
+  }
+
+  const totalInteractions =
+    totalLikes +
+    totalComments +
+    totalSaves
+
+  // ==========================================
+  // FORMATAÇÃO
+  // ==========================================
+
+  function compactNumber(value: number) {
+    return new Intl.NumberFormat('pt-AO', {
+      notation: 'compact',
+      maximumFractionDigits: 1,
+    }).format(value)
+  }
+
   return (
     <main className="min-h-screen bg-white">
 
-      {/* ==========================================
+      {/* ======================================
           HEADER
-      ========================================== */}
+      ====================================== */}
 
-      <section className="border-b border-gray-100 bg-white">
+      <header className="sticky top-0 z-30 border-b border-gray-100 bg-white/95 backdrop-blur">
 
-        <div className="mx-auto max-w-5xl px-4 py-4 sm:px-6">
+        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4 sm:px-6">
 
-          <div className="flex items-center justify-between">
+          <Link
+            href="/agency"
+            className="text-sm font-semibold text-gray-500 transition hover:text-gray-950"
+          >
+            ← Painel
+          </Link>
 
-            <Link
-              href="/agency"
-              className="text-sm font-semibold text-gray-500 transition hover:text-gray-900"
-            >
-              ← Painel
-            </Link>
+          <span className="text-base font-black text-gray-950">
+            Perfil
+          </span>
 
-            <Link
-              href="/agency/profile/edit"
-              className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm font-bold text-gray-700 transition hover:bg-gray-50"
-            >
-              <Pencil size={15} />
-              Editar
-            </Link>
-
-          </div>
+          <Link
+            href="/agency/profile/edit"
+            aria-label="Editar perfil"
+            className="flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-gray-100"
+          >
+            <Pencil size={17} />
+          </Link>
 
         </div>
 
-      </section>
+      </header>
 
-      {/* ==========================================
+      {/* ======================================
           PERFIL
-      ========================================== */}
+      ====================================== */}
 
-      <section className="mx-auto max-w-5xl px-4 pt-5 sm:px-6">
+      <section className="mx-auto max-w-5xl px-4 pt-4 sm:px-6">
 
         {/* CAPA */}
 
-        <div className="relative h-56 overflow-hidden rounded-3xl bg-gray-100 sm:h-72 md:h-80">
+        <div className="relative h-52 overflow-hidden rounded-3xl bg-gray-100 sm:h-72 md:h-80">
 
           {agency.cover_image ? (
             <img
@@ -170,12 +324,10 @@ export default async function AgencyProfilePage() {
             />
           ) : (
             <div className="flex h-full items-center justify-center bg-gradient-to-br from-orange-400 via-orange-500 to-orange-600">
-
               <Building2
-                size={48}
-                className="text-white/70"
+                size={50}
+                className="text-white/60"
               />
-
             </div>
           )}
 
@@ -183,15 +335,15 @@ export default async function AgencyProfilePage() {
 
         </div>
 
-        {/* INFORMAÇÕES PRINCIPAIS */}
+        {/* INFORMAÇÕES */}
 
-        <div className="relative px-1 sm:px-4">
+        <div className="relative px-1 sm:px-5">
 
-          {/* AVATAR */}
+          {/* LOGO */}
 
           <div className="-mt-14 flex items-end justify-between sm:-mt-16">
 
-            <div className="h-28 w-28 overflow-hidden rounded-full border-4 border-white bg-orange-50 shadow-lg sm:h-32 sm:w-32">
+            <div className="h-28 w-28 overflow-hidden rounded-full border-4 border-white bg-orange-50 shadow-xl sm:h-32 sm:w-32">
 
               {agency.logo_url ? (
                 <img
@@ -222,7 +374,7 @@ export default async function AgencyProfilePage() {
 
           <div className="mt-4">
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
 
               <h1 className="text-2xl font-black tracking-tight text-gray-950 sm:text-3xl">
                 {agency.name}
@@ -230,7 +382,7 @@ export default async function AgencyProfilePage() {
 
               {agency.is_verified && (
                 <BadgeCheck
-                  size={22}
+                  size={21}
                   className="fill-orange-500 text-white"
                 />
               )}
@@ -267,11 +419,11 @@ export default async function AgencyProfilePage() {
             </div>
           )}
 
-          {/* BOTÃO MOBILE */}
+          {/* MOBILE EDITAR */}
 
           <Link
             href="/agency/profile/edit"
-            className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-800 transition hover:bg-gray-50 sm:hidden"
+            className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 py-2.5 text-sm font-bold text-gray-800 sm:hidden"
           >
             <Pencil size={15} />
             Editar perfil
@@ -281,41 +433,61 @@ export default async function AgencyProfilePage() {
 
       </section>
 
-      {/* ==========================================
+      {/* ======================================
           ESTATÍSTICAS
-      ========================================== */}
+      ====================================== */}
 
-      <section className="mx-auto mt-7 max-w-5xl border-y border-gray-100 sm:px-4">
+      <section className="mx-auto mt-7 max-w-5xl border-y border-gray-100">
 
-        <div className="grid grid-cols-3">
+        <div className="grid grid-cols-4">
 
-          <div className="px-3 py-5 text-center">
+          <div className="px-2 py-5 text-center">
             <p className="text-xl font-black text-gray-950">
-              {publishedExperiences.length}
+              {compactNumber(posts.length)}
             </p>
 
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="mt-1 text-[11px] text-gray-500">
+              Publicações
+            </p>
+          </div>
+
+          <div className="border-x border-gray-100 px-2 py-5 text-center">
+            <p className="text-xl font-black text-gray-950">
+              {compactNumber(
+                publishedExperiences.length,
+              )}
+            </p>
+
+            <p className="mt-1 text-[11px] text-gray-500">
               Experiências
             </p>
           </div>
 
-          <div className="border-x border-gray-100 px-3 py-5 text-center">
+          <div className="border-r border-gray-100 px-2 py-5 text-center">
             <p className="text-xl font-black text-gray-950">
-              {agencyExperiences.length}
+              {compactNumber(totalLikes)}
             </p>
 
-            <p className="mt-1 text-xs text-gray-500">
-              Publicadas
+            <p className="mt-1 flex items-center justify-center gap-1 text-[11px] text-gray-500">
+              <Heart size={11} />
+              Likes
             </p>
           </div>
 
-          <div className="px-3 py-5 text-center">
-            <p className="text-xl font-black text-gray-950">
-              {agency.is_verified ? '✓' : '—'}
-            </p>
+          <div className="px-2 py-5 text-center">
+            <div className="flex items-center justify-center gap-1">
+              <Star
+                size={16}
+                className="fill-orange-400 text-orange-400"
+              />
 
-            <p className="mt-1 text-xs text-gray-500">
-              Verificada
+              <p className="text-xl font-black text-gray-950">
+                {averageRating || '—'}
+              </p>
+            </div>
+
+            <p className="mt-1 text-[11px] text-gray-500">
+              Avaliação
             </p>
           </div>
 
@@ -323,84 +495,121 @@ export default async function AgencyProfilePage() {
 
       </section>
 
-      {/* ==========================================
-          CONTEÚDO
-      ========================================== */}
+      {/* ======================================
+          SEGUNDA LINHA DE MÉTRICAS
+      ====================================== */}
 
-      <section className="mx-auto max-w-5xl px-4 sm:px-6">
+      <section className="mx-auto max-w-5xl px-4 pt-5 sm:px-6">
 
-        {/* TAB */}
+        <div className="flex flex-wrap items-center gap-2">
 
-        <div className="flex justify-center border-b border-gray-100">
+          <div className="flex items-center gap-1.5 rounded-full bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-600">
+            <MessageCircle size={14} />
+            {compactNumber(totalComments)} comentários
+          </div>
 
-          <div className="flex items-center gap-2 border-b-2 border-gray-950 px-5 py-4 text-xs font-black uppercase tracking-wider text-gray-950">
+          <div className="flex items-center gap-1.5 rounded-full bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-600">
+            <Bookmark size={14} />
+            {compactNumber(totalSaves)} guardados
+          </div>
+
+          <div className="flex items-center gap-1.5 rounded-full bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-600">
+            <Heart size={14} />
+            {compactNumber(totalInteractions)} interações
+          </div>
+
+        </div>
+
+      </section>
+
+      {/* ======================================
+          TABS
+      ====================================== */}
+
+      <section className="mx-auto mt-6 max-w-5xl">
+
+        <div className="flex border-b border-gray-100">
+
+          <div className="flex flex-1 items-center justify-center gap-2 border-b-2 border-gray-950 py-4 text-xs font-black uppercase tracking-wider text-gray-950">
             <Grid3X3 size={15} />
+            Publicações
+          </div>
+
+          <div className="flex flex-1 items-center justify-center gap-2 py-4 text-xs font-black uppercase tracking-wider text-gray-400">
+            <Building2 size={15} />
             Experiências
           </div>
 
         </div>
 
-        {/* GRID */}
+      </section>
 
-        {publishedExperiences.length > 0 ? (
+      {/* ======================================
+          PUBLICAÇÕES DA AGÊNCIA
+      ====================================== */}
+
+      <section className="mx-auto max-w-5xl px-1 sm:px-4">
+
+        {posts.length > 0 ? (
 
           <div className="grid grid-cols-2 gap-1 py-1 sm:grid-cols-3 sm:gap-2">
 
-            {publishedExperiences.map(
-              (experience) => (
-                <Link
-                  key={experience.id}
-                  href={`/experience/${experience.slug}`}
-                  className="group relative aspect-square overflow-hidden bg-gray-100"
-                >
+            {posts.map((post) => (
+              <Link
+                key={post.id}
+                href={`/review/${post.id}`}
+                className="group relative aspect-square overflow-hidden bg-gray-100"
+              >
 
-                  {experience.cover_image ? (
-                    <img
-                      src={experience.cover_image}
-                      alt={experience.title}
-                      className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center bg-gray-100">
-                      <Building2
-                        size={28}
-                        className="text-gray-300"
-                      />
-                    </div>
-                  )}
+                {post.media_type === 'video' ? (
+                  <video
+                    src={post.media_url}
+                    className="h-full w-full object-cover"
+                    muted
+                    playsInline
+                  />
+                ) : (
+                  <img
+                    src={post.media_url}
+                    alt={post.caption || 'Publicação'}
+                    className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                  />
+                )}
 
-                  {/* OVERLAY */}
+                {/* OVERLAY */}
 
-                  <div className="absolute inset-0 flex items-end bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 transition group-hover:opacity-100">
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 pt-12 opacity-0 transition group-hover:opacity-100">
 
-                    <div className="w-full p-4 text-white">
+                  <div className="flex items-center gap-3 text-xs font-bold text-white">
 
-                      <p className="line-clamp-2 text-sm font-bold">
-                        {experience.title}
-                      </p>
+                    {post.rating && (
+                      <span className="flex items-center gap-1">
+                        <Star
+                          size={13}
+                          className="fill-orange-400 text-orange-400"
+                        />
+                        {post.rating}
+                      </span>
+                    )}
 
-                      <p className="mt-1 text-xs text-white/80">
-                        {Number(
-                          experience.price,
-                        ).toLocaleString(
-                          'pt-AO',
-                        )}{' '}
-                        Kz
-                      </p>
-
-                    </div>
+                    <span className="flex items-center gap-1">
+                      <Heart size={13} />
+                      {/* O número individual será mostrado
+                          quando abrirmos o post */}
+                    </span>
 
                   </div>
 
-                </Link>
-              ),
-            )}
+                </div>
+
+              </Link>
+            ))}
 
           </div>
 
         ) : (
 
-          <div className="py-20 text-center">
+          <div className="px-5 py-20 text-center">
 
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
               <Grid3X3
@@ -410,20 +619,13 @@ export default async function AgencyProfilePage() {
             </div>
 
             <h2 className="mt-5 text-lg font-black">
-              Ainda não existem experiências
+              Ainda não existem publicações
             </h2>
 
             <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-gray-500">
-              Quando esta agência publicar experiências,
-              elas aparecerão aqui.
+              As publicações e reviews da agência
+              aparecerão aqui.
             </p>
-
-            <Link
-              href="/agency/experiences/new"
-              className="mt-5 inline-flex rounded-xl bg-orange-500 px-5 py-3 text-sm font-bold text-white transition hover:bg-orange-600"
-            >
-              Criar experiência
-            </Link>
 
           </div>
 
@@ -431,9 +633,9 @@ export default async function AgencyProfilePage() {
 
       </section>
 
-      {/* ==========================================
+      {/* ======================================
           CONTACTOS
-      ========================================== */}
+      ====================================== */}
 
       {(agency.phone ||
         agency.email ||
@@ -442,8 +644,8 @@ export default async function AgencyProfilePage() {
 
           <div className="rounded-3xl bg-gray-50 p-5">
 
-            <h2 className="text-sm font-black uppercase tracking-wider text-gray-500">
-              Contactos
+            <h2 className="text-xs font-black uppercase tracking-[0.15em] text-gray-400">
+              Contactos da agência
             </h2>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
