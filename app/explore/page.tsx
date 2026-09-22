@@ -1,3 +1,4 @@
+
 import AppShell from '../components/app-shell'
 import SearchBar from '../components/search-bar'
 import ExperienceCard from '../components/experience-card'
@@ -12,8 +13,29 @@ const categories = [
   'Gastronomia',
 ]
 
+type Experience = {
+  id: string
+  title: string
+  slug: string
+  location: string | null
+  city: string | null
+  province: string | null
+  price: number
+  cover_image: string | null
+  activity_start_at: string | null
+  activity_end_at: string | null
+  agency_id: string | null
+}
+
+type Agency = {
+  id: string
+  name: string
+}
+
 export default async function ExplorePage() {
   const supabase = await createClient()
+
+  const now = new Date().toISOString()
 
   const {
     data: experiences,
@@ -28,9 +50,13 @@ export default async function ExplorePage() {
       city,
       province,
       price,
-      cover_image
+      cover_image,
+      activity_start_at,
+      activity_end_at,
+      agency_id
     `)
     .eq('status', 'published')
+    .gt('activity_end_at', now)
     .order('created_at', {
       ascending: false,
     })
@@ -42,14 +68,17 @@ export default async function ExplorePage() {
     )
   }
 
+  const typedExperiences =
+    (experiences || []) as Experience[]
+
   // ==========================================
   // CARREGAR AVALIAÇÕES EM LOTE
   // ==========================================
 
   const experienceIds =
-    experiences?.map(
+    typedExperiences.map(
       (experience) => experience.id,
-    ) || []
+    )
 
   const ratingsByExperience =
     new Map<string, number[]>()
@@ -91,6 +120,56 @@ export default async function ExplorePage() {
     }
   }
 
+  // ==========================================
+  // CARREGAR AGÊNCIAS
+  // ==========================================
+
+  const agencyIds = Array.from(
+    new Set(
+      typedExperiences
+        .map(
+          (experience) =>
+            experience.agency_id,
+        )
+        .filter(
+          (id): id is string =>
+            Boolean(id),
+        ),
+    ),
+  )
+
+  let agencies: Agency[] = []
+
+  if (agencyIds.length > 0) {
+    const {
+      data: agencyData,
+      error: agencyError,
+    } = await supabase
+      .from('agencies')
+      .select(`
+        id,
+        name
+      `)
+      .in('id', agencyIds)
+
+    if (agencyError) {
+      console.error(
+        'Erro ao carregar agências:',
+        agencyError,
+      )
+    } else {
+      agencies =
+        (agencyData || []) as Agency[]
+    }
+  }
+
+  const agencyMap = new Map(
+    agencies.map((agency) => [
+      agency.id,
+      agency.name,
+    ]),
+  )
+
   return (
     <AppShell>
       <main className="min-h-screen">
@@ -122,18 +201,20 @@ export default async function ExplorePage() {
 
         <section className="mx-auto max-w-7xl px-5 sm:px-6 lg:px-8">
           <div className="flex gap-2 overflow-x-auto pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {categories.map((category, index) => (
-              <button
-                key={category}
-                className={`shrink-0 rounded-full px-5 py-2.5 text-sm font-semibold transition ${
-                  index === 0
-                    ? 'bg-gray-950 text-white'
-                    : 'border border-gray-200 bg-white text-gray-700 hover:border-gray-400'
-                }`}
-              >
-                {category}
-              </button>
-            ))}
+            {categories.map(
+              (category, index) => (
+                <button
+                  key={category}
+                  className={`shrink-0 rounded-full px-5 py-2.5 text-sm font-semibold transition ${
+                    index === 0
+                      ? 'bg-gray-950 text-white'
+                      : 'border border-gray-200 bg-white text-gray-700 hover:border-gray-400'
+                  }`}
+                >
+                  {category}
+                </button>
+              ),
+            )}
           </div>
         </section>
 
@@ -146,54 +227,74 @@ export default async function ExplorePage() {
             </h2>
 
             <p className="mt-1 text-sm text-gray-500">
-              {experiences?.length || 0} experiências disponíveis
+              {typedExperiences.length} experiências disponíveis
             </p>
           </div>
 
-          {experiences && experiences.length > 0 ? (
+          {typedExperiences.length > 0 ? (
             <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {experiences.map((experience) => {
-                const ratings =
-                  ratingsByExperience.get(
-                    experience.id,
-                  ) || []
+              {typedExperiences.map(
+                (experience) => {
+                  const ratings =
+                    ratingsByExperience.get(
+                      experience.id,
+                    ) || []
 
-                const rating = ratings.length
-                  ? Number(
-                      (
-                        ratings.reduce(
-                          (total, value) =>
-                            total + value,
-                          0,
-                        ) / ratings.length
-                      ).toFixed(1),
-                    )
-                  : 0
+                  const rating =
+                    ratings.length
+                      ? Number(
+                          (
+                            ratings.reduce(
+                              (
+                                total,
+                                value,
+                              ) =>
+                                total + value,
+                              0,
+                            ) /
+                            ratings.length
+                          ).toFixed(1),
+                        )
+                      : 0
 
-                return (
-                  <ExperienceCard
-                    key={experience.id}
-                    id={experience.id}
-                    slug={experience.slug}
-                    title={experience.title}
-                    location={
-                      experience.location ||
-                      experience.city ||
-                      experience.province
-                    }
-                    price={`${Number(
-                      experience.price,
-                    ).toLocaleString(
-                      'pt-AO',
-                    )} Kz`}
-                    rating={rating}
-                    image={
-                      experience.cover_image ||
-                      '/placeholder-experience.jpg'
-                    }
-                  />
-                )
-              })}
+                  return (
+                    <ExperienceCard
+                      key={experience.id}
+                      id={experience.id}
+                      slug={experience.slug}
+                      title={experience.title}
+                      location={
+                        experience.location ||
+                        experience.city ||
+                        experience.province ||
+                        'Angola'
+                      }
+                      price={`${Number(
+                        experience.price,
+                      ).toLocaleString(
+                        'pt-AO',
+                      )} Kz`}
+                      rating={rating}
+                      image={
+                        experience.cover_image ||
+                        '/placeholder-experience.jpg'
+                      }
+                      activityStartAt={
+                        experience.activity_start_at ||
+                        ''
+                      }
+                      agencyName={
+                        experience.agency_id
+                          ? agencyMap.get(
+                              experience.agency_id,
+                            ) ??
+                            'Agência'
+                          : 'Agência'
+                      }
+                    />
+                  )
+                },
+              )}
             </div>
           ) : (
             <div className="rounded-3xl bg-gray-50 p-10 text-center">
@@ -207,6 +308,7 @@ export default async function ExplorePage() {
             </div>
           )}
         </section>
+
       </main>
     </AppShell>
   )
