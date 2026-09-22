@@ -1,4 +1,3 @@
-
 import Link from 'next/link'
 import {
   ChevronRight,
@@ -10,6 +9,7 @@ import CategoryChip from './components/category-chip'
 import HomeSearch from './components/home-search'
 import FeaturedExperiences from './components/featured-experiences'
 import AdvertisementCarousel from './components/home/advertisement-carousel'
+import WeekendPlaces from './components/home/weekend-places'
 import WizendaAiOrb from './components/wizenda-ai-orb'
 
 type ExperienceCategory =
@@ -118,13 +118,15 @@ export default function Home() {
 
           <div className="mt-5 flex gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 
-            {categories.map((category, index) => (
-              <CategoryChip
-                key={category}
-                name={category}
-                active={index === 0}
-              />
-            ))}
+            {categories.map(
+              (category, index) => (
+                <CategoryChip
+                  key={category}
+                  name={category}
+                  active={index === 0}
+                />
+              ),
+            )}
 
           </div>
 
@@ -160,10 +162,17 @@ export default function Home() {
 
         </section>
 
-        {/* WIZENDA AI */}
+        {/* =====================================================
+            LUGARES PARA O FIM DE SEMANA
+        ====================================================== */}
+        <WeekendPlaces />
+
+        {/* =====================================================
+            SOBA IA
+        ====================================================== */}
         <Link
-          href="/ai"
-          aria-label="Abrir Wizenda AI"
+          href="/soba"
+          aria-label="Abrir Soba IA"
           className="group fixed bottom-24 right-5 z-[9999] transition-transform duration-300 hover:-translate-y-1 active:scale-95 sm:bottom-24 sm:right-8"
         >
           <div className="relative">
@@ -175,7 +184,7 @@ export default function Home() {
 
             {/* LABEL */}
             <div className="absolute -left-2 top-1/2 hidden -translate-x-full -translate-y-1/2 whitespace-nowrap rounded-full bg-gray-950 px-4 py-2 text-xs font-bold text-white shadow-xl sm:block">
-              Wizenda AI
+              Soba IA
             </div>
 
           </div>

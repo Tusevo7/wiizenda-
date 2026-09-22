@@ -1138,6 +1138,7 @@ function ContentSection({
     </div>
   )
 }
+
 function MusicSection() {
   const supabase = createClient()
 

@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import {
-  CalendarDays,
   Heart,
   MapPin,
   Star,
@@ -105,11 +104,8 @@ export default function ExperienceCard({
     musicUrl.trim().length > 0
 
   /*
-   * =========================================================
-   * FAVORITOS
-   * =========================================================
+   * FAVORITO
    */
-
   useEffect(() => {
     async function checkFavorite() {
       const supabase =
@@ -139,7 +135,7 @@ export default function ExperienceCard({
       setFavorite(!!data)
     }
 
-    checkFavorite()
+    void checkFavorite()
   }, [id])
 
   async function toggleFavorite(
@@ -202,11 +198,8 @@ export default function ExperienceCard({
   }
 
   /*
-   * =========================================================
    * MÚSICA
-   * =========================================================
    */
-
   function getMusicStart() {
     const value =
       Number(
@@ -228,8 +221,7 @@ export default function ExperienceCard({
   function getMusicClipDuration() {
     const value =
       Number(
-        musicDurationSeconds ??
-          30,
+        musicDurationSeconds ?? 30,
       )
 
     if (
@@ -245,12 +237,6 @@ export default function ExperienceCard({
     )
   }
 
-  /*
-   * =========================================================
-   * CANCELAR FADE
-   * =========================================================
-   */
-
   function cancelFade() {
     if (
       fadeFrameRef.current !== null
@@ -263,12 +249,6 @@ export default function ExperienceCard({
         null
     }
   }
-
-  /*
-   * =========================================================
-   * FADE
-   * =========================================================
-   */
 
   function fadeAudioTo(
     targetVolume: number,
@@ -327,8 +307,7 @@ export default function ExperienceCard({
       }
 
       if (
-        currentAudio !==
-        audio
+        currentAudio !== audio
       ) {
         fadeFrameRef.current =
           null
@@ -394,12 +373,6 @@ export default function ExperienceCard({
       )
   }
 
-  /*
-   * =========================================================
-   * DESTRUIR ÁUDIO
-   * =========================================================
-   */
-
   function destroyMusic() {
     cancelFade()
 
@@ -423,12 +396,6 @@ export default function ExperienceCard({
     setAudioLoading(false)
   }
 
-  /*
-   * =========================================================
-   * PARAR MÚSICA
-   * =========================================================
-   */
-
   function stopMusic(
     smooth = true,
   ) {
@@ -438,6 +405,7 @@ export default function ExperienceCard({
     if (audio === null) {
       setSoundOn(false)
       setAudioLoading(false)
+
       return
     }
 
@@ -464,11 +432,8 @@ export default function ExperienceCard({
   }
 
   /*
-   * =========================================================
    * SOM GLOBAL
-   * =========================================================
    */
-
   useEffect(() => {
     const saved =
       window.localStorage.getItem(
@@ -481,8 +446,13 @@ export default function ExperienceCard({
     globalSoundRef.current =
       enabled
 
-    setGlobalSoundOn(enabled)
-    setSoundOn(enabled)
+    setGlobalSoundOn(
+      enabled,
+    )
+
+    setSoundOn(
+      enabled,
+    )
 
     function handleGlobalSound(
       event: Event,
@@ -503,15 +473,20 @@ export default function ExperienceCard({
       globalSoundRef.current =
         enabled
 
-      setGlobalSoundOn(enabled)
-      setSoundOn(enabled)
+      setGlobalSoundOn(
+        enabled,
+      )
+
+      setSoundOn(
+        enabled,
+      )
 
       if (!enabled) {
         stopMusic(true)
       } else if (
         isVisibleRef.current
       ) {
-        startMusic(true)
+        void startMusic(true)
       }
     }
 
@@ -529,11 +504,8 @@ export default function ExperienceCard({
   }, [id])
 
   /*
-   * =========================================================
    * INICIAR MÚSICA
-   * =========================================================
    */
-
   async function startMusic(
     withSound = true,
   ) {
@@ -550,10 +522,6 @@ export default function ExperienceCard({
     ) {
       return
     }
-
-    /*
-     * Áudio já existe
-     */
 
     const existingAudio =
       audioRef.current
@@ -606,9 +574,9 @@ export default function ExperienceCard({
     }
 
     /*
-     * Avisar outros cards
+     * Para garantir que apenas uma
+     * experiência toca de cada vez.
      */
-
     window.dispatchEvent(
       new CustomEvent(
         AUDIO_EVENT_NAME,
@@ -619,10 +587,6 @@ export default function ExperienceCard({
         },
       ),
     )
-
-    /*
-     * Criar áudio
-     */
 
     const audio =
       new Audio()
@@ -646,12 +610,6 @@ export default function ExperienceCard({
       getMusicClipDuration()
 
     setAudioLoading(true)
-
-    /*
-     * =======================================================
-     * METADATA
-     * =======================================================
-     */
 
     const handleLoadedMetadata =
       async () => {
@@ -698,10 +656,6 @@ export default function ExperienceCard({
           audio.currentTime =
             safeStart
 
-          /*
-           * SOM GLOBAL DESLIGADO
-           */
-
           if (
             !globalSoundRef.current
           ) {
@@ -725,10 +679,6 @@ export default function ExperienceCard({
 
             return
           }
-
-          /*
-           * Tentar autoplay COM SOM
-           */
 
           audio.muted =
             false
@@ -757,10 +707,6 @@ export default function ExperienceCard({
             'Autoplay com som bloqueado pelo navegador.',
             error,
           )
-
-          /*
-           * Tentar novamente muted
-           */
 
           try {
             if (
@@ -808,11 +754,9 @@ export default function ExperienceCard({
       }
 
     /*
-     * =======================================================
-     * LOOP DO TRECHO
-     * =======================================================
+     * Mantém apenas um trecho
+     * da música a tocar.
      */
-
     const handleTimeUpdate =
       () => {
         if (
@@ -833,26 +777,18 @@ export default function ExperienceCard({
           audio.currentTime =
             start
 
-          audio
-            .play()
-            .catch(
-              () => {
-                if (
-                  audioRef.current ===
-                  audio
-                ) {
-                  setSoundOn(false)
-                }
-              },
-            )
+          void audio.play().catch(
+            () => {
+              if (
+                audioRef.current ===
+                audio
+              ) {
+                setSoundOn(false)
+              }
+            },
+          )
         }
       }
-
-    /*
-     * =======================================================
-     * FIM DO ÁUDIO
-     * =======================================================
-     */
 
     const handleEnded =
       () => {
@@ -866,25 +802,17 @@ export default function ExperienceCard({
         audio.currentTime =
           start
 
-        audio
-          .play()
-          .catch(
-            () => {
-              if (
-                audioRef.current ===
-                audio
-              ) {
-                setSoundOn(false)
-              }
-            },
-          )
+        void audio.play().catch(
+          () => {
+            if (
+              audioRef.current ===
+              audio
+            ) {
+              setSoundOn(false)
+            }
+          },
+        )
       }
-
-    /*
-     * =======================================================
-     * ERRO
-     * =======================================================
-     */
 
     const handleError =
       () => {
@@ -903,12 +831,6 @@ export default function ExperienceCard({
         setAudioLoading(false)
         setSoundOn(false)
       }
-
-    /*
-     * =======================================================
-     * EVENT LISTENERS
-     * =======================================================
-     */
 
     audio.addEventListener(
       'loadedmetadata',
@@ -940,11 +862,8 @@ export default function ExperienceCard({
   }
 
   /*
-   * =========================================================
-   * BOTÃO DE SOM — GLOBAL
-   * =========================================================
+   * BOTÃO DO SOM
    */
-
   async function toggleSound(
     event: React.MouseEvent<HTMLButtonElement>,
   ) {
@@ -959,9 +878,8 @@ export default function ExperienceCard({
     }
 
     /*
-     * DESLIGAR SOM GLOBALMENTE
+     * Desligar som globalmente
      */
-
     if (
       globalSoundRef.current
     ) {
@@ -991,9 +909,8 @@ export default function ExperienceCard({
     }
 
     /*
-     * LIGAR SOM GLOBALMENTE
+     * Ligar som globalmente
      */
-
     globalSoundRef.current =
       true
 
@@ -1024,11 +941,8 @@ export default function ExperienceCard({
   }
 
   /*
-   * =========================================================
-   * UM ÚNICO ÁUDIO ATIVO
-   * =========================================================
+   * QUANDO OUTRO CARD COMEÇA
    */
-
   useEffect(() => {
     function handleOtherAudio(
       event: Event,
@@ -1060,18 +974,19 @@ export default function ExperienceCard({
   }, [id])
 
   /*
-   * =========================================================
-   * INTERSECTION OBSERVER
-   * =========================================================
+   * AUTOPLAY COM INTERSECTION OBSERVER
    */
-
   useEffect(() => {
     const card =
       cardRef.current
 
-    if (!card) return
+    if (!card) {
+      return
+    }
 
-    if (!hasMusic) return
+    if (!hasMusic) {
+      return
+    }
 
     const observer =
       new IntersectionObserver(
@@ -1079,11 +994,9 @@ export default function ExperienceCard({
           const entry =
             entries[0]
 
-          if (!entry) return
-
-          /*
-           * CARD ATIVO
-           */
+          if (!entry) {
+            return
+          }
 
           if (
             entry.isIntersecting &&
@@ -1093,16 +1006,12 @@ export default function ExperienceCard({
             isVisibleRef.current =
               true
 
-            startMusic(
+            void startMusic(
               globalSoundRef.current,
             )
 
             return
           }
-
-          /*
-           * CARD SAIU
-           */
 
           isVisibleRef.current =
             false
@@ -1136,11 +1045,8 @@ export default function ExperienceCard({
   ])
 
   /*
-   * =========================================================
    * LIMPEZA
-   * =========================================================
    */
-
   useEffect(() => {
     return () => {
       destroyMusic()
@@ -1148,27 +1054,27 @@ export default function ExperienceCard({
   }, [])
 
   /*
-   * =========================================================
    * DATA
-   * =========================================================
    */
+  const dateObject =
+    new Date(activityStartAt)
 
-  const formattedDate =
-    new Date(
-      activityStartAt,
-    ).toLocaleDateString(
-      'pt-AO',
-      {
-        day: '2-digit',
-        month: 'short',
-      },
-    )
+  const formattedMonth =
+    dateObject
+      .toLocaleDateString(
+        'pt-AO',
+        {
+          month: 'short',
+        },
+      )
+      .replace(
+        '.',
+        '',
+      )
+      .toUpperCase()
 
-  /*
-   * =========================================================
-   * RENDER
-   * =========================================================
-   */
+  const formattedDay =
+    dateObject.getDate()
 
   return (
     <Link
@@ -1180,27 +1086,34 @@ export default function ExperienceCard({
         className="group relative overflow-hidden rounded-3xl bg-gray-100 shadow-sm"
       >
         <div className="relative h-[520px] w-full overflow-hidden sm:h-[560px] lg:h-[600px]">
+          {/* IMAGEM */}
           <img
             src={image}
             alt={title}
             className="h-full w-full object-cover transition duration-700 group-hover:scale-[1.05]"
           />
 
+          {/* GRADIENTE */}
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 via-45% to-transparent" />
 
           <div className="absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-black/40 to-transparent" />
 
-          {rating > 0 && (
-            <div className="absolute left-4 top-4 flex items-center gap-1.5 rounded-full bg-black/45 px-3 py-2 text-sm font-bold text-white backdrop-blur-md">
-              <Star
-                size={15}
-                className="fill-orange-400 text-orange-400"
-              />
+          {/* =====================================================
+              DATA — CANTO SUPERIOR ESQUERDO
+          ====================================================== */}
+          <div className="absolute left-4 top-4 z-20 flex min-w-[58px] flex-col items-center justify-center rounded-2xl bg-[#FF5A1F] px-3 py-2.5 text-white shadow-lg">
+            <span className="text-[9px] font-bold uppercase tracking-[0.16em] text-white/75">
+              {formattedMonth}
+            </span>
 
-              {rating.toFixed(1)}
-            </div>
-          )}
+            <span className="text-2xl font-black leading-none">
+              {formattedDay}
+            </span>
+          </div>
 
+          {/* =====================================================
+              FAVORITO — CANTO SUPERIOR DIREITO
+          ====================================================== */}
           <button
             type="button"
             onClick={
@@ -1212,7 +1125,7 @@ export default function ExperienceCard({
                 ? 'Remover dos favoritos'
                 : 'Adicionar aos favoritos'
             }
-            className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full bg-white/95 shadow-lg backdrop-blur transition hover:scale-105 disabled:opacity-60"
+            className="absolute right-4 top-4 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-white/95 shadow-lg backdrop-blur transition hover:scale-105 disabled:opacity-60"
           >
             <Heart
               size={20}
@@ -1224,6 +1137,9 @@ export default function ExperienceCard({
             />
           </button>
 
+          {/* =====================================================
+              ÁUDIO — DIREITA, ABAIXO DO FAVORITO
+          ====================================================== */}
           {hasMusic && (
             <button
               type="button"
@@ -1238,7 +1154,7 @@ export default function ExperienceCard({
                   ? 'Silenciar'
                   : 'Ativar som'
               }
-              className="absolute right-4 top-[68px] flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white shadow-lg backdrop-blur-md transition hover:scale-105 hover:bg-black/70 disabled:cursor-wait disabled:opacity-70"
+              className="absolute right-4 top-[68px] z-20 flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white shadow-lg backdrop-blur-md transition hover:scale-105 hover:bg-black/70 disabled:cursor-wait disabled:opacity-70"
             >
               {globalSoundOn ? (
                 <Volume2
@@ -1254,7 +1170,11 @@ export default function ExperienceCard({
             </button>
           )}
 
+          {/* =====================================================
+              CONTEÚDO INFERIOR
+          ====================================================== */}
           <div className="absolute inset-x-0 bottom-0 p-5 text-white sm:p-6 lg:p-7">
+            {/* AGÊNCIA */}
             <div className="mb-5 flex items-center gap-3">
               <div className="h-11 w-11 shrink-0 overflow-hidden rounded-full border-2 border-white/90 bg-white shadow-lg">
                 {agencyLogo ? (
@@ -1287,33 +1207,24 @@ export default function ExperienceCard({
               </div>
             </div>
 
+            {/* TÍTULO */}
             <h3 className="line-clamp-2 text-2xl font-black leading-tight tracking-tight text-white sm:text-3xl">
               {title}
             </h3>
 
-            <div className="mt-4 flex items-center gap-4 text-sm text-white/85">
-              <div className="flex min-w-0 items-center gap-1.5">
-                <MapPin
-                  size={15}
-                  className="shrink-0"
-                />
+            {/* LOCALIZAÇÃO */}
+            <div className="mt-4 flex items-center gap-1.5 text-sm text-white/85">
+              <MapPin
+                size={15}
+                className="shrink-0"
+              />
 
-                <span className="truncate">
-                  {location}
-                </span>
-              </div>
-
-              <div className="flex shrink-0 items-center gap-1.5">
-                <CalendarDays
-                  size={15}
-                />
-
-                <span>
-                  {formattedDate}
-                </span>
-              </div>
+              <span className="truncate">
+                {location}
+              </span>
             </div>
 
+            {/* PREÇO */}
             <div className="mt-5 flex items-end justify-between gap-4">
               <div>
                 <p className="text-xs font-medium text-white/65">
