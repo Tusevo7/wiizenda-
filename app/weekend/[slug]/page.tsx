@@ -36,7 +36,7 @@ export default async function WeekendPlacePage({
 }: PageProps) {
   const { slug } = await params
 
-  const supabase = createClient()
+  const supabase = await createClient()
 
   const {
     data: place,
@@ -196,6 +196,7 @@ export default async function WeekendPlacePage({
                 </div>
 
                 <div>
+
                   <p className="text-sm font-bold text-gray-950">
                     {location}
                   </p>
@@ -211,6 +212,7 @@ export default async function WeekendPlacePage({
                         .join(', ')}
                     </p>
                   )}
+
                 </div>
 
               </div>
@@ -282,8 +284,7 @@ export default async function WeekendPlacePage({
               </div>
 
               {/* PREÇO */}
-              {place.price_from !==
-                null && (
+              {place.price_from !== null && (
                 <div className="mt-5 rounded-2xl bg-gray-50 p-4">
 
                   <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">
