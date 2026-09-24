@@ -116,6 +116,7 @@ export default function ReviewPage() {
   const activePostIdRef = useRef<string | null>(null)
 
   const [audioUnlocked, setAudioUnlocked] = useState(false)
+  const shouldResumeAudioRef = useRef(false)
 
   const currentUserIdRef = useRef<string | null>(null)
 
@@ -299,10 +300,71 @@ export default function ReviewPage() {
   }, [posts])
 
   /*
+
    * ============================================================
    * CARREGAR POSTS
    * ============================================================
    */
+useEffect(() => {
+  function handleVisibilityChange() {
+    const audio = audioRef.current
+
+    if (!audio) return
+
+    if (document.visibilityState === 'hidden') {
+      /*
+       * Telefone bloqueado, aplicação foi para segundo plano
+       * ou o utilizador saiu temporariamente da página.
+       *
+       * Se o áudio estava a tocar, guardamos essa informação
+       * e pausamos SEM alterar currentTime.
+       */
+      if (!audio.paused) {
+        shouldResumeAudioRef.current = true
+        audio.pause()
+      }
+    }
+
+    if (
+      document.visibilityState === 'visible' &&
+      shouldResumeAudioRef.current
+    ) {
+      /*
+       * Telefone desbloqueado / aplicação voltou ao primeiro plano.
+       *
+       * O currentTime não foi alterado, por isso continua
+       * exatamente de onde parou.
+       */
+      shouldResumeAudioRef.current = false
+
+      audio
+        .play()
+        .then(() => {
+          setSoundOn(true)
+          setAudioUnlocked(true)
+        })
+        .catch(() => {
+          shouldResumeAudioRef.current = false
+        })
+    }
+  }
+
+  document.addEventListener(
+    'visibilitychange',
+    handleVisibilityChange,
+  )
+
+  return () => {
+    document.removeEventListener(
+      'visibilitychange',
+      handleVisibilityChange,
+    )
+  }
+}, [])
+
+
+
+
 
   async function loadPosts() {
     try {
