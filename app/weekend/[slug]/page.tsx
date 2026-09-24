@@ -2,7 +2,6 @@ import Link from 'next/link'
 import {
   ArrowLeft,
   Globe,
-  InstagramIcon,
   MapPin,
   Phone,
 } from 'lucide-react'
@@ -22,7 +21,6 @@ type WeekendPlace = {
   logo_url: string | null
   phone: string | null
   website: string | null
-  instagram: string | null
   price_from: number | null
   is_featured: boolean
 }
@@ -58,7 +56,6 @@ export default async function WeekendPlacePage({
       logo_url,
       phone,
       website,
-      instagram,
       price_from,
       is_featured
     `)
@@ -324,6 +321,7 @@ export default async function WeekendPlacePage({
                     className="flex items-center gap-3 rounded-2xl border border-gray-100 p-3 text-sm font-bold text-gray-700 transition hover:border-orange-200 hover:bg-orange-50 hover:text-orange-600"
                   >
                     <Phone size={17} />
+
                     <span className="truncate">
                       {place.phone}
                     </span>
@@ -338,29 +336,15 @@ export default async function WeekendPlacePage({
                     className="flex items-center gap-3 rounded-2xl border border-gray-100 p-3 text-sm font-bold text-gray-700 transition hover:border-orange-200 hover:bg-orange-50 hover:text-orange-600"
                   >
                     <Globe size={17} />
+
                     <span className="truncate">
                       Website
                     </span>
                   </a>
                 )}
 
-                {place.instagram && (
-                  <a
-                    href={place.instagram}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-3 rounded-2xl border border-gray-100 p-3 text-sm font-bold text-gray-700 transition hover:border-orange-200 hover:bg-orange-50 hover:text-orange-600"
-                  >
-                    <InstagramIcon size={17} />
-                    <span className="truncate">
-                      Instagram
-                    </span>
-                  </a>
-                )}
-
                 {!place.phone &&
-                  !place.website &&
-                  !place.instagram && (
+                  !place.website && (
                     <p className="rounded-2xl bg-gray-50 p-4 text-xs leading-5 text-gray-500">
                       Este estabelecimento ainda não adicionou contactos.
                     </p>
