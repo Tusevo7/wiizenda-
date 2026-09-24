@@ -247,21 +247,18 @@ export default async function AdminPage() {
     experienceIds.length > 0
       ? await supabase
           .from('experiences')
-          .select(
-            'id, category',
-          )
+          .select('id, category')
           .in('id', experienceIds)
       : { data: [] }
 
-  const experienceCategoryMap =
-    new Map(
-      (bookingExperiences || []).map(
-        (experience) => [
-          experience.id,
-          experience.category,
-        ],
-      ),
-    )
+  const experienceCategoryMap = new Map(
+    (bookingExperiences || []).map(
+      (experience) => [
+        experience.id,
+        experience.category,
+      ],
+    ),
+  )
 
   const reservationCategoryMap: Record<
     string,
@@ -302,6 +299,26 @@ export default async function AdminPage() {
       name,
       value,
     }))
+
+  // =========================================================
+  // PROVÍNCIAS
+  // =========================================================
+
+  const { data: provincias } = await supabase
+    .from('provincias')
+    .select(`
+      id,
+      nome,
+      slug,
+      descricao,
+      imagem,
+      publicada,
+      created_at,
+      updated_at
+    `)
+    .order('created_at', {
+      ascending: false,
+    })
 
   // =========================================================
   // ATIVIDADES RECENTES
@@ -374,6 +391,7 @@ export default async function AdminPage() {
       users={users || []}
       agencies={agencies || []}
       experiences={experiences || []}
+      provincias={provincias || []}
     />
   )
 }

@@ -213,7 +213,7 @@ export default function AppHeader() {
               </Link>
 
               <Link
-                href="/provinces"
+                href="/provincias"
                 onClick={closeMenu}
                 className="flex items-center gap-3 rounded-[4px] px-3 py-3 text-sm font-medium text-gray-800 hover:bg-gray-50"
               >

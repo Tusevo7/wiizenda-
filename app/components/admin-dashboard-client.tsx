@@ -12,6 +12,7 @@ import {
   LockKeyhole,
   Medal,
   Music,
+  MapPin,
   RotateCcw,
   Settings,
   ShieldCheck,
@@ -29,6 +30,7 @@ type MenuKey =
   | 'overview'
   | 'users'
   | 'companies'
+  | 'provincias'
   | 'content'
   | 'music'
   | 'bookings'
@@ -113,7 +115,16 @@ type AdminExperience = {
     | ExperienceAgency[]
     | null
 }
-
+type AdminProvince = {
+  id: string
+  nome: string
+  slug: string
+  descricao: string | null
+  imagem: string | null
+  publicada: boolean
+  created_at: string
+  updated_at: string
+}
 type MusicTrack = {
   id: string
   title: string
@@ -166,6 +177,8 @@ type DashboardProps = {
   agencies?: AdminAgency[]
 
   experiences?: AdminExperience[]
+
+  provincias?: AdminProvince[]
 }
 
 const menuSections = [
@@ -191,6 +204,11 @@ const menuSections = [
         key: 'companies' as MenuKey,
         label: 'Empresas',
         icon: Building2,
+      },
+            {
+        key: 'provincias' as MenuKey,
+        label: 'Províncias',
+        icon: MapPin,
       },
       {
         key: 'content' as MenuKey,
@@ -2323,6 +2341,119 @@ function MusicSection() {
     </section>
   )
 }
+function ProvinciasSection({
+  provincias,
+}: {
+  provincias: AdminProvince[]
+}) {
+  return (
+    <div className="mx-auto max-w-[1500px]">
+      <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div>
+          <h2 className="text-2xl font-black tracking-tight text-gray-950">
+            Províncias
+          </h2>
+          <p className="mt-1 text-sm text-gray-500">
+            Gerencie as províncias disponíveis na Wizenda.
+          </p>
+        </div>
+
+        <div className="rounded-xl bg-white px-4 py-3 text-sm shadow-sm ring-1 ring-gray-100">
+          <span className="text-gray-500">Total:</span>{' '}
+          <span className="font-bold text-gray-950">
+            {provincias.length}
+          </span>
+        </div>
+      </div>
+
+      {provincias.length === 0 ? (
+        <div className="rounded-2xl border border-gray-100 bg-white p-12 text-center shadow-sm">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50 text-orange-500">
+            <MapPin size={28} />
+          </div>
+
+          <h3 className="mt-5 text-lg font-bold text-gray-950">
+            Nenhuma província encontrada
+          </h3>
+
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">
+            As províncias adicionadas ao Supabase aparecerão aqui.
+          </p>
+        </div>
+      ) : (
+        <div className="grid gap-5">
+          {provincias.map((provincia) => (
+            <div
+              key={provincia.id}
+              className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm"
+            >
+              <div className="flex flex-col lg:flex-row">
+                <div className="h-48 w-full shrink-0 bg-gray-100 lg:h-auto lg:w-64">
+                  {provincia.imagem ? (
+                    <img
+                      src={provincia.imagem}
+                      alt={provincia.nome}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full min-h-48 items-center justify-center text-gray-300">
+                      <MapPin size={42} />
+                    </div>
+                  )}
+                </div>
+
+                <div className="min-w-0 flex-1 p-5 sm:p-6">
+                  <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+                    <div>
+                      <span
+                        className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${
+                          provincia.publicada
+                            ? 'bg-green-50 text-green-700'
+                            : 'bg-gray-100 text-gray-500'
+                        }`}
+                      >
+                        {provincia.publicada
+                          ? 'Publicada'
+                          : 'Não publicada'}
+                      </span>
+
+                      <h3 className="mt-3 text-xl font-black tracking-tight text-gray-950">
+                        {provincia.nome}
+                      </h3>
+
+                      <p className="mt-1 text-sm text-gray-500">
+                        /provincias/{provincia.slug}
+                      </p>
+
+                      <p className="mt-4 max-w-2xl text-sm leading-6 text-gray-600">
+                        {provincia.descricao ||
+                          'Sem descrição disponível.'}
+                      </p>
+
+                      <p className="mt-4 text-xs text-gray-400">
+                        Criada em {formatDate(provincia.created_at)}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="inline-flex shrink-0 items-center justify-center rounded-xl bg-gray-950 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-gray-800"
+                    >
+                      Editar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+
 export default function AdminDashboardClient({
   stats,
   growthData,
@@ -2332,6 +2463,7 @@ export default function AdminDashboardClient({
   users,
   agencies = [],
   experiences = [],
+  provincias = [],
 }: DashboardProps) {
   const [activeMenu, setActiveMenu] =
     useState<MenuKey>('overview')
@@ -2867,6 +2999,10 @@ export default function AdminDashboardClient({
               />
             )}
 
+            {activeMenu === 'provincias' && (
+  <ProvinciasSection provincias={provincias} />
+)}
+
             {/* CONTEÚDO */}
 
             {activeMenu === 'content' && (
@@ -2894,7 +3030,8 @@ export default function AdminDashboardClient({
             {activeMenu !== 'overview' &&
               activeMenu !== 'companies' &&
               activeMenu !== 'content' &&
-              activeMenu !== 'music' && (
+              activeMenu !== 'music' &&
+              activeMenu !== 'provincias' && (
                 <div className="mx-auto flex min-h-[500px] max-w-[1500px] items-center justify-center">
                   <div className="text-center">
                     <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50 text-orange-500">

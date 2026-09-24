@@ -1,39 +1,34 @@
-
 'use client'
 
-import Link from 'next/link'
 import {
-  ArrowLeft,
-  ChevronRight,
-  MapPin,
   MessageCircle,
+  Search,
+  MapPin,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-
 import { createClient } from '@/lib/supabase/client'
+
 import AppShell from '@/app/components/app-shell'
-
-type Agency = {
-  id: string
-  name: string
-  logo_url: string | null
-  city: string | null
-  province: string | null
-}
-
-type Experience = {
-  id: string
-  title: string
-  cover_image: string | null
-}
+import MessagesChatPanel from '@/app/components/messages-chat-panel'
 
 type Conversation = {
   id: string
+  user_id: string
   agency_id: string
   experience_id: string | null
-  updated_at: string
-  agencies: Agency | Agency[] | null
-  experiences: Experience | Experience[] | null
+  created_at: string
+  agency: {
+    id: string
+    name: string
+    logo_url: string | null
+    city: string | null
+    province: string | null
+  } | null
+  experience: {
+    id: string
+    title: string
+    cover_image: string | null
+  } | null
 }
 
 type Message = {
@@ -45,49 +40,57 @@ type Message = {
   created_at: string
 }
 
-export default function MessagesHistoryPage() {
-  const [userId, setUserId] = useState<string | null>(null)
-  const [conversations, setConversations] = useState<
-    Conversation[]
-  >([])
-  const [messages, setMessages] = useState<Message[]>([])
-  const [loading, setLoading] = useState(true)
-
+export default function MessagesPage() {
   const supabase = useMemo(
     () => createClient(),
     [],
   )
 
-  useEffect(() => {
-    let cancelled = false
+  const [conversations, setConversations] =
+    useState<Conversation[]>([])
 
-    async function loadData() {
+  const [messages, setMessages] =
+    useState<Message[]>([])
+
+  const [userId, setUserId] =
+    useState<string | null>(null)
+
+  const [selectedConversationId, setSelectedConversationId] =
+    useState<string | null>(null)
+
+  const [search, setSearch] = useState('')
+
+  const [loading, setLoading] =
+    useState(true)
+
+  useEffect(() => {
+    let mounted = true
+
+    async function loadMessages() {
       const {
         data: { user },
       } = await supabase.auth.getUser()
 
-      if (!user) {
-        if (!cancelled) {
-          setLoading(false)
-        }
+      if (!mounted) return
 
+      if (!user) {
+        setLoading(false)
         return
       }
 
-      if (!cancelled) {
-        setUserId(user.id)
-      }
+      setUserId(user.id)
 
       const {
         data: conversationData,
-        error: conversationsError,
+        error: conversationError,
       } = await supabase
         .from('conversations')
         .select(`
           id,
+          user_id,
           agency_id,
           experience_id,
-          updated_at,
+          created_at,
           agencies (
             id,
             name,
@@ -102,31 +105,50 @@ export default function MessagesHistoryPage() {
           )
         `)
         .eq('user_id', user.id)
-        .order('updated_at', {
+        .order('created_at', {
           ascending: false,
         })
 
-      if (conversationsError) {
+      if (conversationError) {
         console.error(
           'Erro ao carregar conversas:',
-          conversationsError,
+          conversationError,
         )
+
+        setLoading(false)
+        return
       }
 
-      const loadedConversations =
-        (conversationData || []) as Conversation[]
+      const formattedConversations =
+        (conversationData || []).map((item: any) => ({
+          id: item.id,
+          user_id: item.user_id,
+          agency_id: item.agency_id,
+          experience_id: item.experience_id,
+          created_at: item.created_at,
+
+          agency: Array.isArray(item.agencies)
+            ? item.agencies[0] || null
+            : item.agencies || null,
+
+          experience: Array.isArray(item.experiences)
+            ? item.experiences[0] || null
+            : item.experiences || null,
+        }))
+
+      if (!mounted) return
+
+      setConversations(formattedConversations)
 
       const conversationIds =
-        loadedConversations.map(
+        formattedConversations.map(
           (conversation) => conversation.id,
         )
-
-      let loadedMessages: Message[] = []
 
       if (conversationIds.length > 0) {
         const {
           data: messageData,
-          error: messagesError,
+          error: messageError,
         } = await supabase
           .from('messages')
           .select(`
@@ -142,35 +164,53 @@ export default function MessagesHistoryPage() {
             conversationIds,
           )
           .order('created_at', {
-            ascending: false,
+            ascending: true,
           })
 
-        if (messagesError) {
+        if (messageError) {
           console.error(
             'Erro ao carregar mensagens:',
-            messagesError,
+            messageError,
           )
         }
 
-        loadedMessages =
-          (messageData || []) as Message[]
+        if (mounted) {
+          setMessages(messageData || [])
+        }
       }
 
-      if (!cancelled) {
-        setConversations(
-          loadedConversations,
-        )
+      setLoading(false)
+    }
 
-        setMessages(loadedMessages)
+    loadMessages()
 
-        setLoading(false)
-      }
+    return () => {
+      mounted = false
+    }
+  }, [supabase])
 
-      const channel = supabase.channel(
-        `messages-history-${user.id}-${Date.now()}`,
+  /*
+   * =====================================================
+   * RECUPERAR CONVERSA DA URL
+   * =====================================================
+   */
+
+ 
+
+  /*
+   * =====================================================
+   * REALTIME
+   * =====================================================
+   */
+
+  useEffect(() => {
+    if (!userId) return
+
+    const channel = supabase
+      .channel(
+        `messages-history-${userId}`,
       )
-
-      channel.on(
+      .on(
         'postgres_changes',
         {
           event: 'INSERT',
@@ -181,18 +221,22 @@ export default function MessagesHistoryPage() {
           const newMessage =
             payload.new as Message
 
-          if (
-            !conversationIds.includes(
-              newMessage.conversation_id,
+          const belongsToConversation =
+            conversations.some(
+              (conversation) =>
+                conversation.id ===
+                newMessage.conversation_id,
             )
-          ) {
+
+          if (!belongsToConversation) {
             return
           }
 
           setMessages((current) => {
             const exists = current.some(
               (message) =>
-                message.id === newMessage.id,
+                message.id ===
+                newMessage.id,
             )
 
             if (exists) {
@@ -200,37 +244,13 @@ export default function MessagesHistoryPage() {
             }
 
             return [
-              newMessage,
               ...current,
+              newMessage,
             ]
           })
-
-          setConversations((current) =>
-            current
-              .map((conversation) =>
-                conversation.id ===
-                newMessage.conversation_id
-                  ? {
-                      ...conversation,
-                      updated_at:
-                        newMessage.created_at,
-                    }
-                  : conversation,
-              )
-              .sort(
-                (a, b) =>
-                  new Date(
-                    b.updated_at,
-                  ).getTime() -
-                  new Date(
-                    a.updated_at,
-                  ).getTime(),
-              ),
-          )
         },
       )
-
-      channel.on(
+      .on(
         'postgres_changes',
         {
           event: 'UPDATE',
@@ -240,14 +260,6 @@ export default function MessagesHistoryPage() {
         (payload) => {
           const updatedMessage =
             payload.new as Message
-
-          if (
-            !conversationIds.includes(
-              updatedMessage.conversation_id,
-            )
-          ) {
-            return
-          }
 
           setMessages((current) =>
             current.map((message) =>
@@ -259,117 +271,169 @@ export default function MessagesHistoryPage() {
           )
         },
       )
-
-      channel.subscribe((status) => {
-        console.log(
-          '[MessagesHistory] Realtime:',
-          status,
-        )
-      })
-
-      return () => {
-        supabase.removeChannel(channel)
-      }
-    }
-
-    let cleanup:
-      | (() => void)
-      | undefined
-
-    loadData().then((result) => {
-      if (typeof result === 'function') {
-        cleanup = result
-      }
-    })
+      .subscribe()
 
     return () => {
-      cancelled = true
-
-      if (cleanup) {
-        cleanup()
-      }
+      supabase.removeChannel(channel)
     }
-  }, [supabase])
+  }, [
+    supabase,
+    userId,
+    conversations,
+  ])
 
-  const latestMessageByConversation =
-    useMemo(() => {
-      const map = new Map<
-        string,
-        Message
-      >()
+  /*
+   * =====================================================
+   * ÚLTIMA MENSAGEM DE CADA CONVERSA
+   * =====================================================
+   */
 
-      for (const message of messages) {
-        const existing =
-          map.get(
-            message.conversation_id,
+  function getLastMessage(
+    conversationId: string,
+  ) {
+    const conversationMessages =
+      messages.filter(
+        (message) =>
+          message.conversation_id ===
+          conversationId,
+      )
+
+    if (
+      conversationMessages.length === 0
+    ) {
+      return null
+    }
+
+    return conversationMessages[
+      conversationMessages.length - 1
+    ]
+  }
+
+  /*
+   * =====================================================
+   * CONTADOR DE NÃO LIDAS
+   * =====================================================
+   */
+
+  function getUnreadCount(
+    conversationId: string,
+  ) {
+    return messages.filter(
+      (message) =>
+        message.conversation_id ===
+          conversationId &&
+        message.sender_id !== userId &&
+        !message.read,
+    ).length
+  }
+
+  /*
+   * =====================================================
+   * FILTRO
+   * =====================================================
+   */
+
+  const filteredConversations =
+    conversations.filter(
+      (conversation) => {
+        const query =
+          search.trim().toLowerCase()
+
+        if (!query) return true
+
+        const agencyName =
+          conversation.agency?.name
+            ?.toLowerCase() || ''
+
+        const experienceTitle =
+          conversation.experience?.title
+            ?.toLowerCase() || ''
+
+        const lastMessage =
+          getLastMessage(
+            conversation.id,
           )
 
-        if (
-          !existing ||
-          new Date(
-            message.created_at,
-          ).getTime() >
-            new Date(
-              existing.created_at,
-            ).getTime()
-        ) {
-          map.set(
-            message.conversation_id,
-            message,
-          )
+        const messageText =
+          lastMessage?.message
+            ?.toLowerCase() || ''
+
+        return (
+          agencyName.includes(query) ||
+          experienceTitle.includes(query) ||
+          messageText.includes(query)
+        )
+      },
+    )
+
+  /*
+   * =====================================================
+   * ABRIR CONVERSA
+   * =====================================================
+   */
+function openConversation(
+  conversationId: string,
+) {
+  setSelectedConversationId(
+    conversationId,
+  )
+
+  // Marca imediatamente as mensagens
+  // como lidas na interface.
+  setMessages((current) =>
+    current.map((message) => {
+      if (
+        message.conversation_id ===
+          conversationId &&
+        message.sender_id !== userId
+      ) {
+        return {
+          ...message,
+          read: true,
         }
       }
 
-      return map
-    }, [messages])
+      return message
+    }),
+  )
+}
 
-  function formatMessageDate(
-    date: string,
-  ) {
-    const messageDate = new Date(date)
-    const now = new Date()
+  /*
+   * =====================================================
+   * FECHAR CHAT
+   * =====================================================
+   */
 
-    if (
-      messageDate.toDateString() ===
-      now.toDateString()
-    ) {
-      return messageDate.toLocaleTimeString(
-        'pt-AO',
-        {
-          hour: '2-digit',
-          minute: '2-digit',
-        },
-      )
-    }
+function closeConversation() {
+  setSelectedConversationId(null)
+}
+  /*
+   * =====================================================
+   * SEM LOGIN
+   * =====================================================
+   */
 
-    return messageDate.toLocaleDateString(
-      'pt-AO',
-      {
-        day: '2-digit',
-        month: '2-digit',
-      },
-    )
-  }
-
-  if (!userId && !loading) {
+  if (!loading && !userId) {
     return (
       <AppShell>
-        <main className="mx-auto max-w-2xl px-5 py-16 text-center">
-          <h1 className="text-2xl font-black">
-            Inicia sessão para ver as mensagens
-          </h1>
+        <main className="flex min-h-[calc(100vh-140px)] items-center justify-center px-5">
+          <div className="max-w-md text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-orange-50">
+              <MessageCircle
+                size={28}
+                className="text-orange-500"
+              />
+            </div>
 
-          <p className="mt-3 text-gray-500">
-            Entra na tua conta para aceder às
-            conversas.
-          </p>
+            <h1 className="mt-5 text-2xl font-black text-gray-950">
+              Inicia sessão
+            </h1>
 
-          <Link
-            href="/login"
-            className="mt-6 inline-flex rounded-2xl bg-orange-500 px-6 py-3 font-bold text-white"
-          >
-            Entrar
-          </Link>
+            <p className="mt-2 text-sm leading-6 text-gray-500">
+              Inicia sessão para veres e
+              responderes às tuas conversas.
+            </p>
+          </div>
         </main>
       </AppShell>
     )
@@ -377,179 +441,344 @@ export default function MessagesHistoryPage() {
 
   return (
     <AppShell>
-      <main className="min-h-[calc(100vh-140px)] bg-gray-50/50">
-        <section className="border-b border-gray-100 bg-white">
-          <div className="mx-auto flex max-w-3xl items-center gap-3 px-5 py-5">
-            <Link
-              href="/"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition hover:bg-gray-100"
-            >
-              <ArrowLeft size={20} />
-            </Link>
+      <main className="h-[calc(100vh-140px)] min-h-0 overflow-hidden bg-white">
 
-            <div>
-              <h1 className="text-2xl font-black">
-                Mensagens
-              </h1>
+        <div className="mx-auto flex h-full w-full max-w-[1400px] overflow-hidden border-x border-gray-100">
 
-              <p className="mt-1 text-sm text-gray-500">
-                As tuas conversas com as agências.
-              </p>
-            </div>
-          </div>
-        </section>
+          {/* =================================================
+              LISTA DE CONVERSAS
+          ================================================== */}
 
-        <section className="mx-auto max-w-3xl px-5 py-6">
-          {loading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((item) => (
-                <div
-                  key={item}
-                  className="h-24 animate-pulse rounded-3xl border border-gray-100 bg-white"
-                />
-              ))}
-            </div>
-          ) : conversations.length > 0 ? (
-            <div className="space-y-3">
-              {conversations.map(
-                (conversation) => {
-                  const agency =
-                    Array.isArray(
-                      conversation.agencies,
-                    )
-                      ? conversation.agencies[0]
-                      : conversation.agencies
+          <aside
+            className={`
+              flex h-full w-full shrink-0 flex-col bg-white
+              md:w-[350px]
+              lg:w-[390px]
+              md:border-r
+              md:border-gray-100
+              ${
+                selectedConversationId
+                  ? 'hidden md:flex'
+                  : 'flex'
+              }
+            `}
+          >
 
-                  const experience =
-                    Array.isArray(
-                      conversation.experiences,
-                    )
-                      ? conversation.experiences[0]
-                      : conversation.experiences
+            {/* HEADER */}
 
-                  const latestMessage =
-                    latestMessageByConversation.get(
-                      conversation.id,
-                    )
+            <div className="shrink-0 border-b border-gray-100 px-5 py-5">
 
-                  const hasUnread =
-                    latestMessage &&
-                    latestMessage.sender_id !==
-                      userId &&
-                    !latestMessage.read
+              <div className="flex items-center justify-between">
 
-                  return (
-                    <Link
-                      key={conversation.id}
-                      href={`/messages/${conversation.id}`}
-                      className="group block rounded-3xl border border-gray-100 bg-white p-4 transition hover:border-orange-200 hover:shadow-sm"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-gray-100">
-                          {agency?.logo_url ? (
-                            <img
-                              src={
-                                agency.logo_url
-                              }
-                              alt={
-                                agency.name
-                              }
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center text-lg font-black text-gray-400">
-                              {agency?.name
-                                ?.charAt(0)
-                                .toUpperCase() ||
-                                'A'}
-                            </div>
-                          )}
+                <div>
+                  <h1 className="text-2xl font-black tracking-tight text-gray-950">
+                    Mensagens
+                  </h1>
 
-                          {hasUnread && (
-                            <span className="absolute right-1 top-1 h-3 w-3 rounded-full border-2 border-white bg-orange-500" />
-                          )}
-                        </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    As tuas conversas
+                  </p>
+                </div>
 
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-3">
-                            <h2
-                              className={`truncate text-base ${
-                                hasUnread
-                                  ? 'font-black'
-                                  : 'font-bold'
-                              }`}
-                            >
-                              {agency?.name ||
-                                'Agência'}
-                            </h2>
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-50 text-orange-500">
+                  <MessageCircle
+                    size={19}
+                  />
+                </div>
 
-                            {latestMessage && (
-                              <span className="shrink-0 text-[11px] text-gray-400">
-                                {formatMessageDate(
-                                  latestMessage.created_at,
-                                )}
-                              </span>
-                            )}
-                          </div>
-
-                          {experience && (
-                            <div className="mt-1 flex items-center gap-1 text-xs text-gray-500">
-                              <MapPin size={12} />
-
-                              <span className="truncate">
-                                {experience.title}
-                              </span>
-                            </div>
-                          )}
-
-                          <p
-                            className={`mt-2 truncate text-sm ${
-                              hasUnread
-                                ? 'font-bold text-gray-900'
-                                : 'text-gray-500'
-                            }`}
-                          >
-                            {latestMessage
-                              ? latestMessage.message
-                              : 'Começa uma conversa com a agência'}
-                          </p>
-                        </div>
-
-                        <ChevronRight
-                          size={20}
-                          className="shrink-0 text-gray-300 transition group-hover:text-orange-500"
-                        />
-                      </div>
-                    </Link>
-                  )
-                },
-              )}
-            </div>
-          ) : (
-            <div className="flex min-h-[420px] flex-col items-center justify-center rounded-3xl border border-gray-100 bg-white px-6 text-center">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-orange-50 text-orange-500">
-                <MessageCircle size={34} />
               </div>
 
-              <h2 className="mt-6 text-xl font-black">
-                Ainda não tens mensagens
-              </h2>
+              {/* PESQUISA */}
 
-              <p className="mt-2 max-w-sm text-sm leading-6 text-gray-500">
-                Quando falares com uma agência sobre
-                uma experiência, a conversa aparecerá
-                aqui.
-              </p>
+              <div className="mt-5 flex items-center gap-3 rounded-xl bg-gray-50 px-4 py-3">
 
-              <Link
-                href="/explore"
-                className="mt-6 inline-flex rounded-2xl bg-orange-500 px-6 py-3 font-bold text-white transition hover:bg-orange-600"
-              >
-                Explorar experiências
-              </Link>
+                <Search
+                  size={17}
+                  className="shrink-0 text-gray-400"
+                />
+
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(event) =>
+                    setSearch(
+                      event.target.value,
+                    )
+                  }
+                  placeholder="Pesquisar conversas"
+                  className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400"
+                />
+
+              </div>
+
             </div>
-          )}
-        </section>
+
+            {/* LISTA */}
+
+            <div className="min-h-0 flex-1 overflow-y-auto">
+
+              {loading ? (
+                <div className="space-y-1 p-3">
+
+                  {[1, 2, 3, 4].map(
+                    (item) => (
+                      <div
+                        key={item}
+                        className="flex animate-pulse gap-3 rounded-2xl p-3"
+                      >
+                        <div className="h-12 w-12 shrink-0 rounded-full bg-gray-100" />
+
+                        <div className="min-w-0 flex-1 space-y-2 pt-1">
+                          <div className="h-3 w-32 rounded bg-gray-100" />
+                          <div className="h-3 w-48 rounded bg-gray-100" />
+                        </div>
+                      </div>
+                    ),
+                  )}
+
+                </div>
+              ) : filteredConversations.length > 0 ? (
+                <div className="p-2">
+
+                  {filteredConversations.map(
+                    (conversation) => {
+                      const lastMessage =
+                        getLastMessage(
+                          conversation.id,
+                        )
+
+                      const unreadCount =
+                        getUnreadCount(
+                          conversation.id,
+                        )
+
+                      const isSelected =
+                        selectedConversationId ===
+                        conversation.id
+
+                      return (
+                        <button
+                          key={conversation.id}
+                          type="button"
+                          onClick={() =>
+                            openConversation(
+                              conversation.id,
+                            )
+                          }
+                          className={`
+                            flex w-full items-center gap-3 rounded-2xl p-3 text-left transition
+                            ${
+                              isSelected
+                                ? 'bg-orange-50'
+                                : 'hover:bg-gray-50'
+                            }
+                          `}
+                        >
+
+                          {/* LOGO */}
+
+                          <div className="relative h-13 w-13 shrink-0">
+
+                            <div className="flex h-13 w-13 items-center justify-center overflow-hidden rounded-full bg-gray-100">
+
+                              {conversation.agency?.logo_url ? (
+                                <img
+                                  src={
+                                    conversation
+                                      .agency
+                                      .logo_url
+                                  }
+                                  alt={
+                                    conversation
+                                      .agency
+                                      .name
+                                  }
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <span className="text-lg font-black text-gray-400">
+                                  {conversation.agency?.name
+                                    ?.charAt(
+                                      0,
+                                    )
+                                    .toUpperCase() ||
+                                    'A'}
+                                </span>
+                              )}
+
+                            </div>
+
+                            {unreadCount >
+                              0 && (
+                              <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-500 px-1 text-[9px] font-black text-white ring-2 ring-white">
+                                {unreadCount >
+                                9
+                                  ? '9+'
+                                  : unreadCount}
+                              </span>
+                            )}
+
+                          </div>
+
+                          {/* TEXTO */}
+
+                          <div className="min-w-0 flex-1">
+
+                            <div className="flex items-center justify-between gap-2">
+
+                              <h2
+                                className={`
+                                  truncate text-sm
+                                  ${
+                                    unreadCount >
+                                    0
+                                      ? 'font-black text-gray-950'
+                                      : 'font-bold text-gray-800'
+                                  }
+                                `}
+                              >
+                                {conversation
+                                  .agency
+                                  ?.name ||
+                                  'Agência'}
+                              </h2>
+
+                              {lastMessage && (
+                                <span className="shrink-0 text-[10px] text-gray-400">
+                                  {new Date(
+                                    lastMessage.created_at,
+                                  ).toLocaleTimeString(
+                                    'pt-AO',
+                                    {
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                    },
+                                  )}
+                                </span>
+                              )}
+
+                            </div>
+
+                            <div className="mt-1 flex items-center gap-1">
+
+                              {conversation
+                                .experience && (
+                                <span className="max-w-[45%] truncate text-[10px] font-semibold text-orange-500">
+                                  {
+                                    conversation
+                                      .experience
+                                      .title
+                                  }
+                                </span>
+                              )}
+
+                            </div>
+
+                            <p
+                              className={`
+                                mt-1 truncate text-xs
+                                ${
+                                  unreadCount >
+                                  0
+                                    ? 'font-semibold text-gray-700'
+                                    : 'text-gray-500'
+                                }
+                              `}
+                            >
+                              {lastMessage
+                                ? lastMessage.message
+                                : 'Ainda não existem mensagens'}
+                            </p>
+
+                          </div>
+
+                        </button>
+                      )
+                    },
+                  )}
+
+                </div>
+              ) : (
+                <div className="flex min-h-[400px] flex-col items-center justify-center px-8 text-center">
+
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-50">
+                    <MessageCircle
+                      size={27}
+                      className="text-gray-300"
+                    />
+                  </div>
+
+                  <h2 className="mt-5 text-lg font-black text-gray-900">
+                    {search
+                      ? 'Nenhuma conversa encontrada'
+                      : 'Ainda não tens conversas'}
+                  </h2>
+
+                  <p className="mt-2 max-w-xs text-sm leading-6 text-gray-500">
+                    {search
+                      ? 'Tenta pesquisar por outro nome ou experiência.'
+                      : 'Quando entrares em contacto com uma agência, as tuas conversas aparecerão aqui.'}
+                  </p>
+
+                </div>
+              )}
+
+            </div>
+
+          </aside>
+
+          {/* =================================================
+              CHAT — DESKTOP
+          ================================================== */}
+
+          <section
+            className={`
+              min-w-0 flex-1
+              ${
+                selectedConversationId
+                  ? 'flex'
+                  : 'hidden md:flex'
+              }
+            `}
+          >
+
+            {selectedConversationId &&
+            userId ? (
+              <MessagesChatPanel
+                conversationId={
+                  selectedConversationId
+                }
+                userId={userId}
+                onClose={
+                  closeConversation
+                }
+              />
+            ) : (
+              <div className="hidden h-full flex-1 flex-col items-center justify-center bg-gray-50 md:flex">
+
+                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white shadow-sm">
+                  <MessageCircle
+                    size={32}
+                    className="text-gray-300"
+                  />
+                </div>
+
+                <h2 className="mt-6 text-xl font-black text-gray-900">
+                  As tuas mensagens
+                </h2>
+
+                <p className="mt-2 max-w-sm text-center text-sm leading-6 text-gray-500">
+                  Seleciona uma conversa para
+                  começares a falar com uma agência.
+                </p>
+
+              </div>
+            )}
+
+          </section>
+
+        </div>
+
       </main>
     </AppShell>
   )

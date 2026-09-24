@@ -1,21 +1,22 @@
-
 'use client'
 
 import Link from 'next/link'
 import {
-  ArrowLeft,
   ChevronRight,
   MapPin,
   MessageCircle,
+  Search,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { createClient } from '@/lib/supabase/client'
 import AppShell from '@/app/components/app-shell'
+import AgencyMessagesChatPanel from '@/app/components/agency-messages-chat-panel'
 
 type Conversation = {
   id: string
   user_id: string
+  agency_id: string
   experience_id: string | null
   customer_name: string | null
   customer_phone: string | null
@@ -40,13 +41,21 @@ type Message = {
 export default function AgencyMessagesPage() {
   const [userId, setUserId] = useState<string | null>(null)
   const [agencyId, setAgencyId] = useState<string | null>(null)
+
   const [conversations, setConversations] = useState<
     Conversation[]
   >([])
+
   const [experiences, setExperiences] = useState<
     Experience[]
   >([])
+
   const [messages, setMessages] = useState<Message[]>([])
+
+  const [selectedConversationId, setSelectedConversationId] =
+    useState<string | null>(null)
+
+  const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
 
   const supabase = useMemo(
@@ -56,6 +65,8 @@ export default function AgencyMessagesPage() {
 
   useEffect(() => {
     let cancelled = false
+    let channel: ReturnType<typeof supabase.channel> | null =
+      null
 
     async function loadData() {
       const {
@@ -98,6 +109,7 @@ export default function AgencyMessagesPage() {
           .select(`
             id,
             user_id,
+            agency_id,
             experience_id,
             customer_name,
             customer_phone,
@@ -109,8 +121,7 @@ export default function AgencyMessagesPage() {
           })
 
       const conversationList =
-        (conversationData ||
-          []) as Conversation[]
+        (conversationData || []) as Conversation[]
 
       const conversationIds =
         conversationList.map(
@@ -166,21 +177,17 @@ export default function AgencyMessagesPage() {
       }
 
       if (!cancelled) {
-        setConversations(
-          conversationList,
-        )
-
-        setExperiences(
-          experienceData,
-        )
-
+        setConversations(conversationList)
+        setExperiences(experienceData)
         setMessages(messageData)
-
         setLoading(false)
       }
 
-      const channel = supabase.channel(
-        `agency-messages-history-${user.id}-${Date.now()}`,
+      /*
+       * REALTIME
+       */
+      channel = supabase.channel(
+        `agency-messages-${agency.id}`,
       )
 
       channel.on(
@@ -217,28 +224,6 @@ export default function AgencyMessagesPage() {
               ...current,
             ]
           })
-
-          setConversations((current) =>
-            current.sort(
-              (a, b) => {
-                if (
-                  a.id ===
-                  newMessage.conversation_id
-                ) {
-                  return -1
-                }
-
-                if (
-                  b.id ===
-                  newMessage.conversation_id
-                ) {
-                  return 1
-                }
-
-                return 0
-              },
-            ),
-          )
         },
       )
 
@@ -272,33 +257,16 @@ export default function AgencyMessagesPage() {
         },
       )
 
-      channel.subscribe((status) => {
-        console.log(
-          '[AgencyMessagesHistory] Realtime:',
-          status,
-        )
-      })
-
-      return () => {
-        supabase.removeChannel(channel)
-      }
+      channel.subscribe()
     }
 
-    let cleanup:
-      | (() => void)
-      | undefined
-
-    loadData().then((result) => {
-      if (typeof result === 'function') {
-        cleanup = result
-      }
-    })
+    loadData()
 
     return () => {
       cancelled = true
 
-      if (cleanup) {
-        cleanup()
+      if (channel) {
+        supabase.removeChannel(channel)
       }
     }
   }, [supabase])
@@ -313,10 +281,7 @@ export default function AgencyMessagesPage() {
   }, [experiences])
 
   const lastMessageMap = useMemo(() => {
-    const map = new Map<
-      string,
-      Message
-    >()
+    const map = new Map<string, Message>()
 
     for (const message of messages) {
       const existing =
@@ -324,12 +289,8 @@ export default function AgencyMessagesPage() {
 
       if (
         !existing ||
-        new Date(
-          message.created_at,
-        ).getTime() >
-          new Date(
-            existing.created_at,
-          ).getTime()
+        new Date(message.created_at).getTime() >
+          new Date(existing.created_at).getTime()
       ) {
         map.set(
           message.conversation_id,
@@ -342,10 +303,7 @@ export default function AgencyMessagesPage() {
   }, [messages])
 
   const unreadMap = useMemo(() => {
-    const map = new Map<
-      string,
-      number
-    >()
+    const map = new Map<string, number>()
 
     for (const message of messages) {
       if (
@@ -354,9 +312,7 @@ export default function AgencyMessagesPage() {
       ) {
         map.set(
           message.conversation_id,
-          (map.get(
-            message.conversation_id,
-          ) ?? 0) + 1,
+          (map.get(message.conversation_id) ?? 0) + 1,
         )
       }
     }
@@ -364,9 +320,42 @@ export default function AgencyMessagesPage() {
     return map
   }, [messages, userId])
 
-  function formatMessageDate(
-    date: string,
-  ) {
+  const filteredConversations = useMemo(() => {
+    const value = search.trim().toLowerCase()
+
+    if (!value) {
+      return conversations
+    }
+
+    return conversations.filter(
+      (conversation) => {
+        const experience =
+          conversation.experience_id
+            ? experienceMap.get(
+                conversation.experience_id,
+              )
+            : null
+
+        return (
+          conversation.customer_name
+            ?.toLowerCase()
+            .includes(value) ||
+          conversation.customer_phone
+            ?.toLowerCase()
+            .includes(value) ||
+          experience?.title
+            .toLowerCase()
+            .includes(value)
+        )
+      },
+    )
+  }, [
+    conversations,
+    experienceMap,
+    search,
+  ])
+
+  function formatMessageDate(date: string) {
     const messageDate = new Date(date)
     const now = new Date()
 
@@ -390,6 +379,37 @@ export default function AgencyMessagesPage() {
         month: '2-digit',
       },
     )
+  }
+
+ function openConversation(
+  conversationId: string,
+) {
+  setSelectedConversationId(
+    conversationId,
+  )
+
+  // Marca imediatamente as mensagens
+  // como lidas na interface.
+  setMessages((current) =>
+    current.map((message) => {
+      if (
+        message.conversation_id ===
+          conversationId &&
+        message.sender_id !== userId
+      ) {
+        return {
+          ...message,
+          read: true,
+        }
+      }
+
+      return message
+    }),
+  )
+}
+
+  function closeConversation() {
+    setSelectedConversationId(null)
   }
 
   if (!userId && !loading) {
@@ -434,75 +454,124 @@ export default function AgencyMessagesPage() {
 
   return (
     <AppShell>
-      <main className="min-h-[calc(100vh-140px)] bg-gray-50/50">
-        <section className="border-b border-gray-100 bg-white">
-          <div className="mx-auto flex max-w-3xl items-center gap-3 px-5 py-5">
-            <Link
-              href="/agency"
-              aria-label="Voltar ao painel da agência"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
-            >
-              <ArrowLeft
-                size={20}
-                aria-hidden="true"
-              />
-            </Link>
+      <main className="h-[calc(100vh-140px)] min-h-[620px] bg-gray-50/50">
+        <section className="mx-auto flex h-full max-w-6xl overflow-hidden border-x border-gray-100 bg-white">
+          {/* =====================================================
+              LISTA DE CONVERSAS
+          ====================================================== */}
+          <aside
+            className={`
+              flex w-full shrink-0 flex-col border-r border-gray-100 bg-white
+              md:w-[360px]
+              lg:w-[390px]
+              ${
+                selectedConversationId
+                  ? 'hidden md:flex'
+                  : 'flex'
+              }
+            `}
+          >
+            {/* HEADER */}
+            <div className="border-b border-gray-100 px-5 py-5">
+              <div className="flex items-center gap-3">
+                <Link
+                  href="/agency"
+                  aria-label="Voltar ao painel"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition hover:bg-gray-100"
+                >
+                  ←
+                </Link>
 
-            <div>
-              <h1 className="text-2xl font-black">
-                Mensagens
-              </h1>
+                <div className="min-w-0 flex-1">
+                  <h1 className="text-xl font-black">
+                    Mensagens
+                  </h1>
 
-              <p className="mt-1 text-sm text-gray-500">
-                As tuas conversas com os clientes.
-              </p>
-            </div>
-          </div>
-        </section>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    Conversas com os teus clientes
+                  </p>
+                </div>
+              </div>
 
-        <section className="mx-auto max-w-3xl px-5 py-6">
-          {loading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((item) => (
-                <div
-                  key={item}
-                  className="h-24 animate-pulse rounded-3xl border border-gray-100 bg-white"
+              {/* PESQUISA */}
+              <div className="relative mt-4">
+                <Search
+                  size={17}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
                 />
-              ))}
+
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(event) =>
+                    setSearch(event.target.value)
+                  }
+                  placeholder="Pesquisar conversa..."
+                  className="h-11 w-full rounded-2xl border border-gray-200 bg-gray-50 pl-10 pr-4 text-sm outline-none transition focus:border-orange-400 focus:bg-white"
+                />
+              </div>
             </div>
-          ) : conversations.length > 0 ? (
-            <div className="space-y-3">
-              {conversations.map(
-                (conversation) => {
-                  const experience =
-                    conversation.experience_id
-                      ? experienceMap.get(
-                          conversation.experience_id,
-                        )
-                      : null
 
-                  const latestMessage =
-                    lastMessageMap.get(
-                      conversation.id,
-                    )
+            {/* CONVERSAS */}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {loading ? (
+                <div className="space-y-2 p-4">
+                  {[1, 2, 3, 4].map(
+                    (item) => (
+                      <div
+                        key={item}
+                        className="h-20 animate-pulse rounded-2xl bg-gray-100"
+                      />
+                    ),
+                  )}
+                </div>
+              ) : filteredConversations.length >
+                0 ? (
+                filteredConversations.map(
+                  (conversation) => {
+                    const experience =
+                      conversation.experience_id
+                        ? experienceMap.get(
+                            conversation.experience_id,
+                          )
+                        : null
 
-                  const unreadCount =
-                    unreadMap.get(
-                      conversation.id,
-                    ) ?? 0
+                    const latestMessage =
+                      lastMessageMap.get(
+                        conversation.id,
+                      )
 
-                  const hasUnread =
-                    unreadCount > 0
+                    const unreadCount =
+                      unreadMap.get(
+                        conversation.id,
+                      ) ?? 0
 
-                  return (
-                    <Link
-                      key={conversation.id}
-                      href={`/agency/messages/${conversation.id}`}
-                      className="group block rounded-3xl border border-gray-100 bg-white p-4 transition hover:border-orange-200 hover:shadow-sm"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-orange-50 text-orange-500">
-                          <span className="text-lg font-black">
+                    const hasUnread =
+                      unreadCount > 0
+
+                    return (
+                      <button
+                        key={conversation.id}
+                        type="button"
+                        onClick={() =>
+                          openConversation(
+                            conversation.id,
+                          )
+                        }
+                        className={`
+                          group flex w-full items-center gap-3 border-b border-gray-100 px-4 py-4 text-left transition
+                          hover:bg-gray-50
+                          ${
+                            selectedConversationId ===
+                            conversation.id
+                              ? 'bg-orange-50/60'
+                              : 'bg-white'
+                          }
+                        `}
+                      >
+                        {/* AVATAR */}
+                        <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-orange-100 text-orange-600">
+                          <span className="text-base font-black">
                             {conversation.customer_name
                               ?.charAt(0)
                               .toUpperCase() ||
@@ -510,14 +579,15 @@ export default function AgencyMessagesPage() {
                           </span>
 
                           {hasUnread && (
-                            <span className="absolute right-1 top-1 h-3 w-3 rounded-full border-2 border-white bg-orange-500" />
+                            <span className="absolute right-0 top-0 h-3.5 w-3.5 rounded-full border-2 border-white bg-orange-500" />
                           )}
                         </div>
 
+                        {/* INFO */}
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center justify-between gap-2">
                             <h2
-                              className={`truncate text-base ${
+                              className={`truncate text-sm ${
                                 hasUnread
                                   ? 'font-black'
                                   : 'font-bold'
@@ -528,7 +598,7 @@ export default function AgencyMessagesPage() {
                             </h2>
 
                             {latestMessage && (
-                              <span className="shrink-0 text-[11px] text-gray-400">
+                              <span className="shrink-0 text-[10px] text-gray-400">
                                 {formatMessageDate(
                                   latestMessage.created_at,
                                 )}
@@ -537,10 +607,10 @@ export default function AgencyMessagesPage() {
                           </div>
 
                           {experience && (
-                            <div className="mt-1 flex items-center gap-1 text-xs text-gray-500">
+                            <div className="mt-1 flex min-w-0 items-center gap-1 text-[11px] text-gray-500">
                               <MapPin
-                                size={12}
-                                aria-hidden="true"
+                                size={11}
+                                className="shrink-0"
                               />
 
                               <span className="truncate">
@@ -549,15 +619,8 @@ export default function AgencyMessagesPage() {
                             </div>
                           )}
 
-                          {!experience &&
-                            conversation.customer_phone && (
-                              <p className="mt-1 truncate text-xs text-gray-500">
-                                {conversation.customer_phone}
-                              </p>
-                            )}
-
                           <p
-                            className={`mt-2 truncate text-sm ${
+                            className={`mt-1 truncate text-xs ${
                               hasUnread
                                 ? 'font-bold text-gray-900'
                                 : 'text-gray-500'
@@ -565,40 +628,91 @@ export default function AgencyMessagesPage() {
                           >
                             {latestMessage
                               ? latestMessage.message
-                              : 'Começa uma conversa com o cliente'}
+                              : 'Nova conversa'}
                           </p>
                         </div>
 
+                        {hasUnread && (
+                          <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-orange-500 px-1.5 text-[10px] font-black text-white">
+                            {unreadCount > 9
+                              ? '9+'
+                              : unreadCount}
+                          </span>
+                        )}
+
                         <ChevronRight
-                          size={20}
-                          aria-hidden="true"
-                          className="shrink-0 text-gray-300 transition group-hover:text-orange-500"
+                          size={17}
+                          className="shrink-0 text-gray-300"
                         />
-                      </div>
-                    </Link>
-                  )
-                },
+                      </button>
+                    )
+                  },
+                )
+              ) : (
+                <div className="flex min-h-[400px] flex-col items-center justify-center px-6 text-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-orange-50 text-orange-500">
+                    <MessageCircle size={28} />
+                  </div>
+
+                  <h2 className="mt-5 text-lg font-black">
+                    {search
+                      ? 'Nenhuma conversa encontrada'
+                      : 'Ainda não tens mensagens'}
+                  </h2>
+
+                  <p className="mt-2 max-w-xs text-sm leading-6 text-gray-500">
+                    {search
+                      ? 'Experimenta pesquisar por outro nome ou experiência.'
+                      : 'Quando um cliente falar com a tua agência, a conversa aparecerá aqui.'}
+                  </p>
+                </div>
               )}
             </div>
-          ) : (
-            <div className="flex min-h-[420px] flex-col items-center justify-center rounded-3xl border border-gray-100 bg-white px-6 text-center">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-orange-50 text-orange-500">
-                <MessageCircle
-                  size={34}
-                  aria-hidden="true"
-                />
+          </aside>
+
+          {/* =====================================================
+              CHAT LATERAL
+          ====================================================== */}
+          <section
+            className={`
+              min-w-0 flex-1
+              ${
+                selectedConversationId
+                  ? 'flex'
+                  : 'hidden md:flex'
+              }
+            `}
+          >
+            {selectedConversationId &&
+            userId &&
+            agencyId ? (
+              <AgencyMessagesChatPanel
+                conversationId={
+                  selectedConversationId
+                }
+                userId={userId}
+                agencyId={agencyId}
+                onClose={
+                  closeConversation
+                }
+              />
+            ) : (
+              <div className="hidden flex-1 flex-col items-center justify-center md:flex">
+                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-orange-50 text-orange-500">
+                  <MessageCircle size={34} />
+                </div>
+
+                <h2 className="mt-5 text-xl font-black">
+                  As tuas mensagens
+                </h2>
+
+                <p className="mt-2 text-sm text-gray-500">
+                  Seleciona uma conversa para
+                  começar.
+                </p>
               </div>
-
-              <h2 className="mt-6 text-xl font-black">
-                Ainda não tens mensagens
-              </h2>
-
-              <p className="mt-2 max-w-sm text-sm leading-6 text-gray-500">
-                Quando um cliente falar com a tua
-                agência, a conversa aparecerá aqui.
-              </p>
-            </div>
-          )}
+            )}
+          </section>
         </section>
       </main>
     </AppShell>

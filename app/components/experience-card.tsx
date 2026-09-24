@@ -4,9 +4,9 @@ import Link from 'next/link'
 import {
   Heart,
   MapPin,
-  Star,
-  Volume2,
+Music,
   VolumeX,
+  Volume2,
 } from 'lucide-react'
 import {
   useEffect,
@@ -65,6 +65,8 @@ export default function ExperienceCard({
   activityStartAt,
   agencyName,
   agencyLogo,
+  musicTitle = null,
+  musicArtist = null,
   musicUrl = null,
   musicStartSeconds = null,
   musicDurationSeconds = null,
@@ -574,8 +576,8 @@ export default function ExperienceCard({
     }
 
     /*
-     * Para garantir que apenas uma
-     * experiência toca de cada vez.
+     * Apenas uma experiência
+     * toca de cada vez.
      */
     window.dispatchEvent(
       new CustomEvent(
@@ -754,8 +756,8 @@ export default function ExperienceCard({
       }
 
     /*
-     * Mantém apenas um trecho
-     * da música a tocar.
+     * Mantém apenas o trecho
+     * configurado da música.
      */
     const handleTimeUpdate =
       () => {
@@ -1086,6 +1088,7 @@ export default function ExperienceCard({
         className="group relative overflow-hidden rounded-3xl bg-gray-100 shadow-sm"
       >
         <div className="relative h-[520px] w-full overflow-hidden sm:h-[560px] lg:h-[600px]">
+
           {/* IMAGEM */}
           <img
             src={image}
@@ -1099,16 +1102,47 @@ export default function ExperienceCard({
           <div className="absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-black/40 to-transparent" />
 
           {/* =====================================================
-              DATA — CANTO SUPERIOR ESQUERDO
+              DATA + MÚSICA — CANTO SUPERIOR ESQUERDO
           ====================================================== */}
-          <div className="absolute left-4 top-4 z-20 flex min-w-[58px] flex-col items-center justify-center rounded-2xl bg-[#FF5A1F] px-3 py-2.5 text-white shadow-lg">
-            <span className="text-[9px] font-bold uppercase tracking-[0.16em] text-white/75">
-              {formattedMonth}
-            </span>
+          <div className="absolute left-4 top-4 z-20 flex items-center gap-2.5">
 
-            <span className="text-2xl font-black leading-none">
-              {formattedDay}
-            </span>
+            {/* DATA */}
+            <div className="flex min-w-[52px] shrink-0 flex-col items-center justify-center rounded-xl bg-[#FF5A1F] px-2.5 py-2 text-white shadow-lg">
+              <span className="text-[8px] font-bold uppercase tracking-[0.14em] text-white/75">
+                {formattedMonth}
+              </span>
+
+              <span className="text-xl font-black leading-none">
+                {formattedDay}
+              </span>
+            </div>
+
+            {/* MÚSICA */}
+            {hasMusic && (
+              <div className="flex min-w-0 max-w-[150px] items-center gap-1.5 text-white">
+
+                {/* ÍCONE DA MÚSICA */}
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-black/40 backdrop-blur-sm">
+                  <Music
+                    size={12}
+                    strokeWidth={2.5}
+                  />
+                </div>
+
+                {/* NOME DA MÚSICA + ARTISTA */}
+                <div className="min-w-0">
+                  <p className="truncate text-[11px] font-bold leading-tight text-white drop-shadow-md">
+                    {musicTitle || 'Música'}
+                  </p>
+
+                  <p className="mt-0.5 truncate text-[9px] font-medium leading-tight text-white/70 drop-shadow-md">
+                    {musicArtist || 'Artista'}
+                  </p>
+                </div>
+
+              </div>
+            )}
+
           </div>
 
           {/* =====================================================
@@ -1174,6 +1208,7 @@ export default function ExperienceCard({
               CONTEÚDO INFERIOR
           ====================================================== */}
           <div className="absolute inset-x-0 bottom-0 p-5 text-white sm:p-6 lg:p-7">
+
             {/* AGÊNCIA */}
             <div className="mb-5 flex items-center gap-3">
               <div className="h-11 w-11 shrink-0 overflow-hidden rounded-full border-2 border-white/90 bg-white shadow-lg">
@@ -1240,6 +1275,7 @@ export default function ExperienceCard({
                 Ver experiência
               </span>
             </div>
+
           </div>
         </div>
       </article>

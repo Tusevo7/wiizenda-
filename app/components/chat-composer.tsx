@@ -2,7 +2,6 @@
 
 import { FormEvent, useState } from 'react'
 import { Loader2, Send } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 type ChatComposerProps = {
@@ -14,8 +13,6 @@ export default function ChatComposer({
   conversationId,
   userId,
 }: ChatComposerProps) {
-  const router = useRouter()
-
   const [message, setMessage] = useState('')
   const [sending, setSending] = useState(false)
 
@@ -48,9 +45,6 @@ export default function ChatComposer({
     }
 
     setMessage('')
-
-    router.refresh()
-
     setSending(false)
   }
 

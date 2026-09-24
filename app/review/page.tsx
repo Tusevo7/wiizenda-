@@ -15,7 +15,12 @@ import {
   VolumeX,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { createClient } from '@/lib/supabase/client'
 
@@ -29,8 +34,13 @@ type Post = {
   location: string | null
   rating: number | null
   sound_name: string | null
+  sound_artist: string | null
   sound_url: string | null
   created_at: string
+  tagged_type: 'agency' | 'hotel' | null
+  tagged_id: string | null
+  tagged_name: string | null
+  tagged_image: string | null
   user_name: string
   user_avatar: string | null
   user_role: string
@@ -42,162 +52,277 @@ type Post = {
 
 type Comment = {
   id: string
-  user_id: string
   post_id: string
-  comment: string
+  user_id: string
+  content: string
   created_at: string
   user_name: string
   user_avatar: string | null
 }
 
+type Profile = {
+  id: string
+  full_name: string | null
+  avatar_url: string | null
+  role: string | null
+}
+
+type Agency = {
+  id: string
+  name: string
+  logo_url: string | null
+  owner_id?: string | null
+}
+
+type MusicTrack = {
+  audio_url: string
+  title: string
+  artist: string | null
+}
+
 export default function ReviewPage() {
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
 
   const [posts, setPosts] = useState<Post[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
 
+  const [activePostId, setActivePostId] = useState<string | null>(null)
   const [soundOn, setSoundOn] = useState(true)
-  const [activeAudio, setActiveAudio] = useState<string | null>(null)
 
   const [commentsOpen, setCommentsOpen] = useState(false)
-  const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
-  const [comments, setComments] = useState<Comment[]>([])
-  const [commentsLoading, setCommentsLoading] = useState(false)
-  const [newComment, setNewComment] = useState('')
-  const [commentSubmitting, setCommentSubmitting] = useState(false)
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null)
 
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [comments, setComments] = useState<Comment[]>([])
+  const [commentText, setCommentText] = useState('')
+  const [commentsLoading, setCommentsLoading] = useState(false)
 
   const [shareOpen, setShareOpen] = useState(false)
-  const [sharePostId, setSharePostId] = useState<string | null>(null)
+  const [sharePost, setSharePost] = useState<Post | null>(null)
 
-  const selectedPost = useMemo(
-    () => posts.find((post) => post.id === selectedPostId) ?? null,
-    [posts, selectedPostId],
-  )
+  const [menuOpen, setMenuOpen] = useState<string | null>(null)
 
-  useEffect(() => {
-    loadPosts()
-  }, [])
+  /**
+   * UM ÚNICO AUDIO PARA TODA A PÁGINA.
+   *
+   * Isto é importante:
+   * não criamos um <audio> para cada review.
+   * Assim, quando mudamos de review, primeiro paramos
+   * a música anterior e depois carregamos a nova.
+   */
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
-  useEffect(() => {
-    const postId = new URLSearchParams(window.location.search).get('post')
+  const feedRef = useRef<HTMLDivElement | null>(null)
 
-    if (!postId) return
+  const activePostIdRef = useRef<string | null>(null)
 
-    setTimeout(() => {
-      document
-        .getElementById(`review-post-${postId}`)
-        ?.scrollIntoView({
-          behavior: 'smooth',
-        })
-    }, 500)
-  }, [posts])
+  const [audioUnlocked, setAudioUnlocked] = useState(false)
+
+  const currentUserIdRef = useRef<string | null>(null)
 
   /*
-   * FEED ALEATÓRIO PONDERADO
-   *
-   * Posts recentes têm maior probabilidade
-   * de aparecer primeiro.
+   * ============================================================
+   * CONTROLE CENTRAL DA MÚSICA
+   * ============================================================
    */
-  function weightedShuffle<T extends { created_at: string }>(
-    items: T[],
-  ): T[] {
-    const remaining = [...items]
-    const result: T[] = []
 
-    while (remaining.length > 0) {
-      const now = Date.now()
+  function stopCurrentAudio() {
+    const audio = audioRef.current
 
-      const weighted = remaining.map((item) => {
-        const ageHours = Math.max(
-          0,
-          (now - new Date(item.created_at).getTime()) /
-            (1000 * 60 * 60),
-        )
+    if (!audio) return
 
-        const recencyWeight =
-          1 +
-          8 *
-            Math.exp(
-              -ageHours / (24 * 7),
-            )
+    audio.pause()
+    audio.currentTime = 0
+    audio.removeAttribute('src')
+    audio.load()
+  }
 
-        const randomFactor = 0.5 + Math.random()
+  async function playPostMusic(post: Post | null) {
+    const audio = audioRef.current
 
-        return {
-          item,
-          weight:
-            recencyWeight *
-            randomFactor,
-        }
-      })
+    if (!audio) return
 
-      const totalWeight = weighted.reduce(
-        (sum, entry) =>
-          sum + entry.weight,
-        0,
-      )
+    /*
+     * Se não existe música neste review,
+     * paramos qualquer música anterior.
+     */
+    if (!post?.sound_url) {
+      stopCurrentAudio()
 
-      let random =
-        Math.random() *
-        totalWeight
+      setActivePostId(null)
+      activePostIdRef.current = null
+      setSoundOn(false)
 
-      let selectedIndex = 0
-
-      for (
-        let i = 0;
-        i < weighted.length;
-        i++
-      ) {
-        random -=
-          weighted[i].weight
-
-        if (random <= 0) {
-          selectedIndex = i
-          break
-        }
-      }
-
-      result.push(
-        weighted[selectedIndex]
-          .item,
-      )
-
-      remaining.splice(
-        selectedIndex,
-        1,
-      )
+      return
     }
 
-    return result
+    /*
+     * Primeiro paramos completamente a música anterior.
+     */
+    audio.pause()
+    audio.currentTime = 0
+
+    /*
+     * Colocamos a música pertencente ao review atual.
+     */
+    audio.src = post.sound_url
+    audio.loop = true
+    audio.preload = 'auto'
+    audio.muted = false
+
+    setActivePostId(post.id)
+    activePostIdRef.current = post.id
+    setSoundOn(true)
+
+    /*
+     * Tentamos tocar imediatamente.
+     *
+     * Em browsers que permitem autoplay:
+     * começa imediatamente.
+     *
+     * Em browsers que bloqueiam autoplay:
+     * o primeiro toque/gesto do utilizador desbloqueia.
+     */
+    try {
+      await audio.play()
+      setAudioUnlocked(true)
+    } catch {
+      setAudioUnlocked(false)
+    }
   }
 
   /*
-   * CARREGAR POSTS
+   * Botão manual de som.
    */
-  async function loadPosts() {
-    setLoading(true)
-    setError(null)
+  async function toggleAudio(post: Post) {
+    const audio = audioRef.current
+
+    if (!audio || !post.sound_url) {
+      setSoundOn((value) => !value)
+      return
+    }
+
+    /*
+     * Se este não é o review ativo,
+     * tornamo-lo ativo e começamos a música dele.
+     */
+    if (activePostIdRef.current !== post.id) {
+      await playPostMusic(post)
+      return
+    }
+
+    /*
+     * Review atual.
+     */
+    if (soundOn) {
+      audio.pause()
+      setSoundOn(false)
+      return
+    }
 
     try {
-      const {
-        data: { user },
-      } =
-        await supabase.auth.getUser()
+      audio.muted = false
+      await audio.play()
+      setSoundOn(true)
+      setAudioUnlocked(true)
+    } catch {
+      setSoundOn(false)
+    }
+  }
 
-      setCurrentUserId(
-        user?.id ?? null,
+  /*
+   * ============================================================
+   * DESBLOQUEAR ÁUDIO APÓS PRIMEIRO GESTO DO UTILIZADOR
+   * ============================================================
+   *
+   * Isto resolve a limitação de autoplay de alguns browsers.
+   */
+  useEffect(() => {
+    function unlockAudio() {
+      const audio = audioRef.current
+
+      if (!audio) return
+
+      const currentId = activePostIdRef.current
+
+      if (!currentId) return
+
+      const post = posts.find(
+        (item) => item.id === currentId,
       )
 
+      if (!post?.sound_url) return
+
+      audio.muted = false
+
+      audio
+        .play()
+        .then(() => {
+          setAudioUnlocked(true)
+          setSoundOn(true)
+        })
+        .catch(() => {
+          // Browser ainda não permitiu autoplay.
+        })
+    }
+
+    window.addEventListener(
+      'pointerdown',
+      unlockAudio,
+    )
+
+    window.addEventListener(
+      'touchstart',
+      unlockAudio,
+    )
+
+    window.addEventListener(
+      'keydown',
+      unlockAudio,
+    )
+
+    return () => {
+      window.removeEventListener(
+        'pointerdown',
+        unlockAudio,
+      )
+
+      window.removeEventListener(
+        'touchstart',
+        unlockAudio,
+      )
+
+      window.removeEventListener(
+        'keydown',
+        unlockAudio,
+      )
+    }
+  }, [posts])
+
+  /*
+   * ============================================================
+   * CARREGAR POSTS
+   * ============================================================
+   */
+
+  async function loadPosts() {
+    try {
+      setLoading(true)
+
       const {
-        data: postRows,
+        data: {
+          user,
+        },
+      } = await supabase.auth.getUser()
+
+      currentUserIdRef.current =
+        user?.id ?? null
+
+      const {
+        data: rawPosts,
         error: postsError,
       } = await supabase
         .from('community_posts')
-        .select(
-          `
+        .select(`
           id,
           user_id,
           post_type,
@@ -208,502 +333,840 @@ export default function ReviewPage() {
           rating,
           sound_name,
           sound_url,
-          created_at
-        `,
-        )
-        .order(
-          'created_at',
-          {
-            ascending: false,
-          },
-        )
+          created_at,
+          tagged_type,
+          tagged_id
+        `)
+        .order('created_at', {
+          ascending: false,
+        })
 
-      if (postsError)
-        throw postsError
+      if (postsError) {
+        console.error(postsError)
+        return
+      }
 
-      if (
-        !postRows ||
-        postRows.length === 0
-      ) {
+      if (!rawPosts || rawPosts.length === 0) {
         setPosts([])
         return
       }
 
-      const userIds = [
-        ...new Set(
-          postRows.map(
-            (post) =>
-              post.user_id,
+      /*
+       * ========================================================
+       * PROFILES
+       * ========================================================
+       */
+
+      const userIds = Array.from(
+        new Set(
+          rawPosts.map(
+            (post) => post.user_id,
           ),
         ),
-      ]
+      )
+
+      let profiles: Profile[] = []
+
+      if (userIds.length > 0) {
+        const {
+          data,
+          error,
+        } = await supabase
+          .from('profiles')
+          .select(
+            'id, full_name, avatar_url, role',
+          )
+          .in('id', userIds)
+
+        if (!error) {
+          profiles = data ?? []
+        }
+      }
+
+      const profileMap = new Map(
+        profiles.map((profile) => [
+          profile.id,
+          profile,
+        ]),
+      )
+
+      /*
+       * ========================================================
+       * AGENCIES
+       * ========================================================
+       */
+
+      let agencies: Agency[] = []
+
+      if (userIds.length > 0) {
+        const {
+          data,
+          error,
+        } = await supabase
+          .from('agencies')
+          .select(
+            'id, name, logo_url, owner_id',
+          )
+          .in('owner_id', userIds)
+
+        if (!error) {
+          agencies = data ?? []
+        }
+      }
+
+      const agencyByOwner = new Map(
+        agencies
+          .filter(
+            (agency) =>
+              agency.owner_id,
+          )
+          .map((agency) => [
+            agency.owner_id as string,
+            agency,
+          ]),
+      )
+
+      /*
+       * ========================================================
+       * TAGGED AGENCIES
+       * ========================================================
+       */
+
+      const taggedAgencyIds =
+        Array.from(
+          new Set(
+            rawPosts
+              .filter(
+                (post) =>
+                  post.tagged_type ===
+                    'agency' &&
+                  post.tagged_id,
+              )
+              .map(
+                (post) =>
+                  post.tagged_id as string,
+              ),
+          ),
+        )
+
+      let taggedAgencies: Agency[] = []
+
+      if (taggedAgencyIds.length > 0) {
+        const {
+          data,
+          error,
+        } = await supabase
+          .from('agencies')
+          .select(
+            'id, name, logo_url',
+          )
+          .in(
+            'id',
+            taggedAgencyIds,
+          )
+
+        if (!error) {
+          taggedAgencies = data ?? []
+        }
+      }
+
+      const taggedAgencyMap =
+        new Map(
+          taggedAgencies.map(
+            (agency) => [
+              agency.id,
+              agency,
+            ],
+          ),
+        )
+
+      /*
+       * ========================================================
+       * TAGGED HOTELS / PLACES
+       * ========================================================
+       */
+
+      const taggedHotelIds =
+        Array.from(
+          new Set(
+            rawPosts
+              .filter(
+                (post) =>
+                  post.tagged_type ===
+                    'hotel' &&
+                  post.tagged_id,
+              )
+              .map(
+                (post) =>
+                  post.tagged_id as string,
+              ),
+          ),
+        )
+
+      type TaggedHotel = {
+        id: string
+        name: string
+        image_url: string | null
+        cover_image: string | null
+      }
+
+      let taggedHotels: TaggedHotel[] =
+        []
+
+      if (taggedHotelIds.length > 0) {
+        const {
+          data,
+          error,
+        } = await supabase
+          .from('weekend_places')
+          .select(
+            'id, name, image_url, cover_image',
+          )
+          .in(
+            'id',
+            taggedHotelIds,
+          )
+
+        if (!error) {
+          taggedHotels = data ?? []
+        }
+      }
+
+      const taggedHotelMap =
+        new Map(
+          taggedHotels.map(
+            (hotel) => [
+              hotel.id,
+              hotel,
+            ],
+          ),
+        )
+
+      /*
+       * ========================================================
+       * MÚSICAS
+       * ========================================================
+       *
+       * Pegamos título + artista diretamente
+       * da tabela music_tracks.
+       */
+
+      const soundUrls =
+        Array.from(
+          new Set(
+            rawPosts
+              .map(
+                (post) =>
+                  post.sound_url,
+              )
+              .filter(
+                (
+                  url,
+                ): url is string =>
+                  Boolean(url),
+              ),
+          ),
+        )
+
+      let musicTracks: MusicTrack[] =
+        []
+
+      if (soundUrls.length > 0) {
+        const {
+          data,
+          error,
+        } = await supabase
+          .from('music_tracks')
+          .select(
+            'audio_url, title, artist',
+          )
+          .in(
+            'audio_url',
+            soundUrls,
+          )
+
+        if (!error) {
+          musicTracks = data ?? []
+        }
+      }
+
+      const musicMap =
+        new Map(
+          musicTracks.map(
+            (track) => [
+              track.audio_url,
+              track,
+            ],
+          ),
+        )
+
+      /*
+       * ========================================================
+       * LIKES
+       * ========================================================
+       */
 
       const postIds =
-        postRows.map(
-          (post) =>
-            post.id,
+        rawPosts.map(
+          (post) => post.id,
         )
 
-      /*
-       * PERFIS
-       */
-      const {
-        data: profiles,
-        error: profilesError,
-      } = await supabase
-        .from('profiles')
-        .select(
-          'id, full_name, role, avatar_url',
-        )
-        .in(
-          'id',
-          userIds,
-        )
+      let likes: {
+        post_id: string
+        user_id: string
+      }[] = []
+
+      {
+        const {
+          data,
+          error,
+        } = await supabase
+          .from('community_post_likes')
+          .select(
+            'post_id, user_id',
+          )
+          .in(
+            'post_id',
+            postIds,
+          )
+
+        if (!error) {
+          likes = data ?? []
+        }
+      }
 
       /*
-       * AGÊNCIAS
-       */
-      const {
-        data: agencies,
-        error: agenciesError,
-      } = await supabase
-        .from('agencies')
-        .select(
-          'id, owner_id, name, logo_url',
-        )
-        .in(
-          'owner_id',
-          userIds,
-        )
-
-      /*
-       * LIKES
-       */
-      const {
-        data: likes,
-        error: likesError,
-      } = await supabase
-        .from('community_likes')
-        .select(
-          'user_id, post_id',
-        )
-        .in(
-          'post_id',
-          postIds,
-        )
-
-      /*
+       * ========================================================
        * SAVES
+       * ========================================================
        */
-      let saves:
-        | {
-            user_id: string
-            post_id: string
-          }[] = []
 
-      let savesError:
-        | unknown
-        | null = null
+      let saves: {
+        post_id: string
+        user_id: string
+      }[] = []
 
-      if (user) {
-        const result =
-          await supabase
-            .from(
-              'community_saves',
+      {
+        const {
+          data,
+          error,
+        } = await supabase
+          .from('community_post_saves')
+          .select(
+            'post_id, user_id',
+          )
+          .in(
+            'post_id',
+            postIds,
+          )
+
+        if (!error) {
+          saves = data ?? []
+        }
+      }
+
+      /*
+       * ========================================================
+       * COMMENTS
+       * ========================================================
+       */
+
+      let allComments: {
+        id: string
+        post_id: string
+        user_id: string
+        content: string
+        created_at: string
+      }[] = []
+
+      {
+        const {
+          data,
+          error,
+        } = await supabase
+          .from('community_comments')
+          .select(`
+            id,
+            post_id,
+            user_id,
+            content,
+            created_at
+          `)
+          .in(
+            'post_id',
+            postIds,
+          )
+          .order(
+            'created_at',
+            {
+              ascending: true,
+            },
+          )
+
+        if (!error) {
+          allComments = data ?? []
+        }
+      }
+
+      /*
+       * ========================================================
+       * MAPEAR POSTS
+       * ========================================================
+       */
+
+      const mappedPosts: Post[] =
+        rawPosts.map((post) => {
+          const profile =
+            profileMap.get(
+              post.user_id,
             )
-            .select(
-              'user_id, post_id',
-            )
-            .eq(
-              'user_id',
-              user.id,
-            )
-            .in(
-              'post_id',
-              postIds,
+
+          const agency =
+            agencyByOwner.get(
+              post.user_id,
             )
 
-        saves =
-          result.data ?? []
+          const taggedAgency =
+            post.tagged_id
+              ? taggedAgencyMap.get(
+                  post.tagged_id,
+                )
+              : undefined
 
-        savesError =
-          result.error
-      }
+          const taggedHotel =
+            post.tagged_id
+              ? taggedHotelMap.get(
+                  post.tagged_id,
+                )
+              : undefined
 
-      /*
-       * COMENTÁRIOS
-       */
-      const {
-        data: commentsRows,
-        error: commentsError,
-      } = await supabase
-        .from(
-          'community_comments',
-        )
-        .select(
-          'post_id',
-        )
-        .in(
-          'post_id',
-          postIds,
-        )
+          const music =
+            post.sound_url
+              ? musicMap.get(
+                  post.sound_url,
+                )
+              : undefined
 
-      /*
-       * ERROS
-       */
-      if (profilesError) {
-        console.error(
-          'Erro ao carregar perfis:',
-          profilesError,
-        )
+          let userName =
+            profile?.full_name ||
+            'Viajante'
 
-        throw profilesError
-      }
+          let userAvatar =
+            profile?.avatar_url ??
+            null
 
-      if (agenciesError) {
-        console.error(
-          'Erro ao carregar agências:',
-          agenciesError,
-        )
+          let userRole =
+            profile?.role ||
+            'Viajante'
 
-        throw agenciesError
-      }
+          /*
+           * Se é agência, mostra agência.
+           */
+          if (agency) {
+            userName =
+              agency.name
 
-      if (likesError) {
-        console.error(
-          'Erro ao carregar likes:',
-          likesError,
-        )
+            userAvatar =
+              agency.logo_url ??
+              userAvatar
 
-        throw likesError
-      }
+            userRole = 'Agência'
+          }
 
-      if (savesError) {
-        console.error(
-          'Erro ao carregar saves:',
-          savesError,
-        )
+          /*
+           * Se é publicação Wizenda/admin.
+           */
+          if (
+            post.post_type ===
+            'wizenda'
+          ) {
+            userName =
+              'Wizenda'
 
-        throw savesError
-      }
+            userRole =
+              'Wizenda'
+          }
 
-      if (commentsError) {
-        console.error(
-          'Erro ao carregar comentários:',
-          commentsError,
-        )
-
-        throw commentsError
-      }
-
-      /*
-       * MAPA DOS PERFIS
-       */
-      const profileMap =
-        new Map(
-          (profiles ?? []).map(
-            (profile) => [
-              profile.id,
-              {
-                full_name:
-                  profile.full_name,
-                role:
-                  profile.role,
-                avatar_url:
-                  profile.avatar_url,
-              },
-            ],
-          ),
-        )
-
-      /*
-       * MAPA DAS AGÊNCIAS
-       *
-       * owner_id = utilizador
-       * que criou a agência.
-       */
-      const agencyMap =
-        new Map(
-          (agencies ?? []).map(
-            (agency) => [
-              agency.owner_id,
-              {
-                name:
-                  agency.name,
-                logo_url:
-                  agency.logo_url,
-              },
-            ],
-          ),
-        )
-
-      /*
-       * CONTAGEM DE LIKES
-       */
-      const likeCountMap =
-        new Map<
-          string,
-          number
-        >()
-
-      for (
-        const like of
-          likes ?? []
-      ) {
-        likeCountMap.set(
-          like.post_id,
-          (
-            likeCountMap.get(
-              like.post_id,
-            ) ?? 0
-          ) + 1,
-        )
-      }
-
-      /*
-       * POSTS CURTIDOS PELO UTILIZADOR
-       */
-      const likedPostIds =
-        new Set(
-          (likes ?? [])
-            .filter(
-              (like) =>
-                like.user_id ===
-                user?.id,
-            )
-            .map(
-              (like) =>
-                like.post_id,
-            ),
-        )
-
-      /*
-       * POSTS GUARDADOS
-       */
-      const savedPostIds =
-        new Set(
-          (saves ?? []).map(
-            (save) =>
-              save.post_id,
-          ),
-        )
-
-      /*
-       * CONTAGEM DE COMENTÁRIOS
-       */
-      const commentCountMap =
-        new Map<
-          string,
-          number
-        >()
-
-      for (
-        const comment of
-          commentsRows ?? []
-      ) {
-        commentCountMap.set(
-          comment.post_id,
-          (
-            commentCountMap.get(
-              comment.post_id,
-            ) ?? 0
-          ) + 1,
-        )
-      }
-
-      /*
-       * FORMATAR POSTS
-       */
-      const formattedPosts: Post[] =
-        postRows.map(
-          (post) => {
-            const profile =
-              profileMap.get(
-                post.user_id,
-              )
-
-            const agency =
-              agencyMap.get(
-                post.user_id,
-              )
-
-            /*
-             * A existência da agência
-             * determina o tipo da publicação.
-             */
-            const isAgency =
-              agencyMap.has(
-                post.user_id,
-              )
-
-            const isWizenda =
-              profile?.role ===
-                'admin' ||
-              profile?.role ===
-                'wizenda'
-
-            let displayName =
-              'Sem nome'
-
-            let displayAvatar:
-              | string
-              | null = null
-
-            /*
-             * AGÊNCIA
-             *
-             * NOME = nome da agência
-             * FOTO = logo da agência
-             *
-             * Exemplo:
-             * Alana Tours
-             */
-            if (isAgency) {
-              displayName =
-                agency?.name ??
-                profile?.full_name ??
-                'Sem nome'
-
-              displayAvatar =
-                agency?.logo_url ??
-                profile?.avatar_url ??
-                null
-            }
-
-            /*
-             * WIZENDA
-             */
-            else if (
-              isWizenda
-            ) {
-              displayName =
-                'Wizenda'
-
-              displayAvatar =
-                profile?.avatar_url ??
-                null
-            }
-
-            /*
-             * VIAJANTE
-             *
-             * NOME = nome do perfil
-             * FOTO = avatar do perfil
-             *
-             * Exemplo:
-             * TUSEVO JUNIOR
-             */
-            else {
-              displayName =
-                profile?.full_name ??
-                'Sem nome'
-
-              displayAvatar =
-                profile?.avatar_url ??
-                null
-            }
-
-            return {
-              ...post,
-
-              user_name:
-                displayName,
-
-              user_avatar:
-                displayAvatar,
-
-              user_role:
-                isAgency
-                  ? 'agency'
-                  : isWizenda
-                    ? 'wizenda'
-                    : profile?.role ??
-                      post.post_type,
-
-              liked:
-                likedPostIds.has(
+          return {
+            id: post.id,
+            user_id:
+              post.user_id,
+            post_type:
+              post.post_type,
+            media_type:
+              post.media_type,
+            media_url:
+              post.media_url,
+            caption:
+              post.caption,
+            location:
+              post.location,
+            rating:
+              post.rating,
+            sound_name:
+              music?.title ??
+              post.sound_name ??
+              null,
+            sound_artist:
+              music?.artist ??
+              null,
+            sound_url:
+              post.sound_url,
+            created_at:
+              post.created_at,
+            tagged_type:
+              post.tagged_type,
+            tagged_id:
+              post.tagged_id,
+            tagged_name:
+              post.tagged_type ===
+                'agency'
+                ? taggedAgency
+                    ?.name ??
+                  null
+                : post.tagged_type ===
+                    'hotel'
+                  ? taggedHotel
+                      ?.name ??
+                    null
+                  : null,
+            tagged_image:
+              post.tagged_type ===
+                'agency'
+                ? taggedAgency
+                    ?.logo_url ??
+                  null
+                : post.tagged_type ===
+                    'hotel'
+                  ? taggedHotel
+                      ?.image_url ??
+                    taggedHotel
+                      ?.cover_image ??
+                    null
+                  : null,
+            user_name:
+              userName,
+            user_avatar:
+              userAvatar,
+            user_role:
+              userRole,
+            liked:
+              Boolean(
+                currentUserIdRef.current &&
+                  likes.some(
+                    (like) =>
+                      like.post_id ===
+                        post.id &&
+                      like.user_id ===
+                        currentUserIdRef.current,
+                  ),
+              ),
+            saved:
+              Boolean(
+                currentUserIdRef.current &&
+                  saves.some(
+                    (save) =>
+                      save.post_id ===
+                        post.id &&
+                      save.user_id ===
+                        currentUserIdRef.current,
+                  ),
+              ),
+            likes_count:
+              likes.filter(
+                (like) =>
+                  like.post_id ===
                   post.id,
-                ),
-
-              saved:
-                savedPostIds.has(
+              ).length,
+            comments_count:
+              allComments.filter(
+                (comment) =>
+                  comment.post_id ===
                   post.id,
-                ),
-
-              likes_count:
-                likeCountMap.get(
-                  post.id,
-                ) ?? 0,
-
-              comments_count:
-                commentCountMap.get(
-                  post.id,
-                ) ?? 0,
-            }
-          },
-        )
+              ).length,
+          }
+        })
 
       /*
-       * FEED ALEATÓRIO
+       * Pequena mistura para o feed não ficar
+       * sempre exatamente na mesma ordem.
        */
-      const randomizedPosts =
-        weightedShuffle(
-          formattedPosts,
-        )
+      const shuffled = [...mappedPosts]
 
-      setPosts(
-        randomizedPosts,
-      )
-    } catch (err) {
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        ;[shuffled[i], shuffled[j]] = [
+          shuffled[j],
+          shuffled[i],
+        ]
+      }
+
+      setPosts(shuffled)
+    } catch (error) {
       console.error(
-        'Erro ao carregar Review:',
-        err,
-      )
-
-      setError(
-        'Não foi possível carregar as publicações.',
+        'Erro ao carregar reviews:',
+        error,
       )
     } finally {
       setLoading(false)
     }
   }
 
+  useEffect(() => {
+    loadPosts()
+  }, [])
+
   /*
-   * LIKE
+   * ============================================================
+   * OBSERVER DOS REVIEWS
+   * ============================================================
+   *
+   * Aqui está a parte principal.
+   *
+   * Quando um review passa a ocupar aproximadamente 70% da tela:
+   *
+   * Review A:
+   * música A toca.
+   *
+   * Usuário arrasta:
+   *
+   * Review B:
+   * música A para.
+   * música B começa.
+   *
+   * Review C:
+   * música B para.
+   * música C começa.
    */
+
+  useEffect(() => {
+    if (!posts.length) return
+
+    const container =
+      feedRef.current
+
+    if (!container) return
+
+    const articles =
+      Array.from(
+        container.querySelectorAll<HTMLElement>(
+          'article[data-review-id]',
+        ),
+      )
+
+    if (!articles.length) return
+
+    const observer =
+      new IntersectionObserver(
+        (entries) => {
+          /*
+           * Procuramos o review que está mais visível.
+           */
+          const visibleEntries =
+            entries.filter(
+              (entry) =>
+                entry.isIntersecting,
+            )
+
+          if (
+            !visibleEntries.length
+          ) {
+            return
+          }
+
+          const mostVisible =
+            visibleEntries.sort(
+              (a, b) =>
+                b.intersectionRatio -
+                a.intersectionRatio,
+            )[0]
+
+          if (!mostVisible) return
+
+          const postId =
+            mostVisible.target.getAttribute(
+              'data-review-id',
+            )
+
+          if (!postId) return
+
+          /*
+           * Não fazemos nada se continuamos
+           * exatamente no mesmo review.
+           */
+          if (
+            activePostIdRef.current ===
+            postId
+          ) {
+            return
+          }
+
+          const post =
+            posts.find(
+              (item) =>
+                item.id === postId,
+            )
+
+          if (!post) return
+
+          /*
+           * MUDA A MÚSICA.
+           */
+          playPostMusic(post)
+        },
+        {
+          root: container,
+          threshold: [
+            0.5,
+            0.6,
+            0.7,
+            0.8,
+            0.9,
+          ],
+        },
+      )
+
+    articles.forEach(
+      (article) => {
+        observer.observe(article)
+      },
+    )
+
+    /*
+     * Define o primeiro review
+     * como ativo.
+     */
+    const firstPost = posts[0]
+
+    if (
+      firstPost &&
+      activePostIdRef.current ===
+        null
+    ) {
+      /*
+       * Pequeno timeout para garantir
+       * que o DOM já está pronto.
+       */
+      const timer =
+        window.setTimeout(() => {
+          playPostMusic(
+            firstPost,
+          )
+        }, 250)
+
+      return () => {
+        window.clearTimeout(
+          timer,
+        )
+
+        observer.disconnect()
+      }
+    }
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [posts])
+
+  /*
+   * Quando a página desmontar,
+   * paramos completamente o áudio.
+   */
+  useEffect(() => {
+    return () => {
+      stopCurrentAudio()
+    }
+  }, [])
+
+  /*
+   * ============================================================
+   * LIKE
+   * ============================================================
+   */
+
   async function toggleLike(
     post: Post,
   ) {
-    if (!currentUserId) {
-      window.location.href =
-        '/login'
+    const userId =
+      currentUserIdRef.current
 
-      return
-    }
+    if (!userId) return
 
-    if (post.liked) {
+    const existing =
+      post.liked
+
+    setPosts((current) =>
+      current.map((item) =>
+        item.id === post.id
+          ? {
+              ...item,
+              liked: !existing,
+              likes_count:
+                Math.max(
+                  0,
+                  item.likes_count +
+                    (existing
+                      ? -1
+                      : 1),
+                ),
+            }
+          : item,
+      ),
+    )
+
+    if (existing) {
       const { error } =
         await supabase
           .from(
-            'community_likes',
+            'community_post_likes',
           )
           .delete()
-          .eq(
-            'user_id',
-            currentUserId,
-          )
           .eq(
             'post_id',
             post.id,
           )
+          .eq(
+            'user_id',
+            userId,
+          )
 
       if (error) {
         console.error(error)
-        return
-      }
 
-      setPosts(
-        (current) =>
+        setPosts((current) =>
+          current.map(
+            (item) =>
+              item.id ===
+              post.id
+                ? {
+                    ...item,
+                    liked:
+                      true,
+                    likes_count:
+                      item.likes_count +
+                      1,
+                  }
+                : item,
+          ),
+        )
+      }
+    } else {
+      const { error } =
+        await supabase
+          .from(
+            'community_post_likes',
+          )
+          .insert({
+            post_id:
+              post.id,
+            user_id:
+              userId,
+          })
+
+      if (error) {
+        console.error(error)
+
+        setPosts((current) =>
           current.map(
             (item) =>
               item.id ===
@@ -721,83 +1184,89 @@ export default function ReviewPage() {
                   }
                 : item,
           ),
-      )
-
-      return
-    }
-
-    const { error } =
-      await supabase
-        .from(
-          'community_likes',
         )
-        .insert({
-          user_id:
-            currentUserId,
-          post_id:
-            post.id,
-        })
-
-    if (error) {
-      console.error(error)
-      return
+      }
     }
-
-    setPosts(
-      (current) =>
-        current.map(
-          (item) =>
-            item.id ===
-            post.id
-              ? {
-                  ...item,
-                  liked:
-                    true,
-                  likes_count:
-                    item.likes_count +
-                    1,
-                }
-              : item,
-        ),
-    )
   }
 
   /*
-   * GUARDAR
+   * ============================================================
+   * SAVE
+   * ============================================================
    */
+
   async function toggleSave(
     post: Post,
   ) {
-    if (!currentUserId) {
-      window.location.href =
-        '/login'
+    const userId =
+      currentUserIdRef.current
 
-      return
-    }
+    if (!userId) return
 
-    if (post.saved) {
+    const existing =
+      post.saved
+
+    setPosts((current) =>
+      current.map((item) =>
+        item.id === post.id
+          ? {
+              ...item,
+              saved: !existing,
+            }
+          : item,
+      ),
+    )
+
+    if (existing) {
       const { error } =
         await supabase
           .from(
-            'community_saves',
+            'community_post_saves',
           )
           .delete()
-          .eq(
-            'user_id',
-            currentUserId,
-          )
           .eq(
             'post_id',
             post.id,
           )
+          .eq(
+            'user_id',
+            userId,
+          )
 
       if (error) {
         console.error(error)
-        return
-      }
 
-      setPosts(
-        (current) =>
+        setPosts((current) =>
+          current.map(
+            (item) =>
+              item.id ===
+              post.id
+                ? {
+                    ...item,
+                    saved:
+                      true,
+                  }
+                : item,
+          ),
+        )
+      }
+    } else {
+      const { error } =
+        await supabase
+          .from(
+            'community_post_saves',
+          )
+          .insert({
+            post_id:
+              post.id,
+            user_id:
+              userId,
+          })
+
+      if (error) {
+        console.error(error)
+
+        setPosts((current) =>
           current.map(
             (item) =>
               item.id ===
@@ -809,54 +1278,21 @@ export default function ReviewPage() {
                   }
                 : item,
           ),
-      )
-
-      return
-    }
-
-    const { error } =
-      await supabase
-        .from(
-          'community_saves',
         )
-        .insert({
-          user_id:
-            currentUserId,
-          post_id:
-            post.id,
-        })
-
-    if (error) {
-      console.error(error)
-      return
+      }
     }
-
-    setPosts(
-      (current) =>
-        current.map(
-          (item) =>
-            item.id ===
-            post.id
-              ? {
-                  ...item,
-                  saved:
-                    true,
-                }
-              : item,
-        ),
-    )
   }
 
   /*
-   * ABRIR COMENTÁRIOS
+   * ============================================================
+   * COMENTÁRIOS
+   * ============================================================
    */
-  async function openComments(
-    postId: string,
-  ) {
-    setSelectedPostId(
-      postId,
-    )
 
+  async function openComments(
+    post: Post,
+  ) {
+    setSelectedPost(post)
     setCommentsOpen(true)
     setCommentsLoading(true)
 
@@ -868,18 +1304,16 @@ export default function ReviewPage() {
         .from(
           'community_comments',
         )
-        .select(
-          `
+        .select(`
           id,
-          user_id,
           post_id,
-          comment,
+          user_id,
+          content,
           created_at
-        `,
-        )
+        `)
         .eq(
           'post_id',
-          postId,
+          post.id,
         )
         .order(
           'created_at',
@@ -888,493 +1322,224 @@ export default function ReviewPage() {
           },
         )
 
-      if (error)
-        throw error
+      if (error) {
+        console.error(error)
+        return
+      }
 
-      const userIds = [
-        ...new Set(
-          (data ?? []).map(
-            (item) =>
-              item.user_id,
+      const commentRows =
+        data ?? []
+
+      const userIds =
+        Array.from(
+          new Set(
+            commentRows.map(
+              (comment) =>
+                comment.user_id,
+            ),
           ),
-        ),
-      ]
+        )
 
-      let profiles: {
-        id: string
-        full_name:
-          | string
-          | null
-        avatar_url:
-          | string
-          | null
-      }[] = []
+      let commentProfiles:
+        Profile[] = []
 
-      let agencies: {
-        owner_id: string
-        name: string
-        logo_url:
-          | string
-          | null
-      }[] = []
-
-      if (
-        userIds.length >
-        0
-      ) {
-        /*
-         * PERFIS DOS COMENTADORES
-         */
+      if (userIds.length) {
         const {
-          data: profileRows,
-          error: profileError,
+          data: profilesData,
         } = await supabase
-          .from(
-            'profiles',
-          )
+          .from('profiles')
           .select(
-            'id, full_name, avatar_url',
+            'id, full_name, avatar_url, role',
           )
           .in(
             'id',
             userIds,
           )
 
-        if (profileError)
-          throw profileError
-
-        profiles =
-          profileRows ?? []
-
-        /*
-         * AGÊNCIAS DOS COMENTADORES
-         */
-        const {
-          data: agencyRows,
-          error: agencyError,
-        } = await supabase
-          .from(
-            'agencies',
-          )
-          .select(
-            'owner_id, name, logo_url',
-          )
-          .in(
-            'owner_id',
-            userIds,
-          )
-
-        if (agencyError)
-          throw agencyError
-
-        agencies =
-          agencyRows ?? []
+        commentProfiles =
+          profilesData ?? []
       }
 
       const profileMap =
         new Map(
-          profiles.map(
+          commentProfiles.map(
             (profile) => [
               profile.id,
-              {
-                full_name:
-                  profile.full_name,
-                avatar_url:
-                  profile.avatar_url,
-              },
-            ],
-          ),
-        )
-
-      const agencyMap =
-        new Map(
-          agencies.map(
-            (agency) => [
-              agency.owner_id,
-              {
-                name:
-                  agency.name,
-                logo_url:
-                  agency.logo_url,
-              },
+              profile,
             ],
           ),
         )
 
       setComments(
-        (data ?? []).map(
+        commentRows.map(
           (comment) => {
             const profile =
               profileMap.get(
                 comment.user_id,
               )
 
-            const agency =
-              agencyMap.get(
-                comment.user_id,
-              )
-
-            /*
-             * AGÊNCIA:
-             * nome = agência
-             * foto = logo
-             *
-             * VIAJANTE:
-             * nome = perfil
-             * foto = avatar
-             */
             return {
-              ...comment,
-
+              id: comment.id,
+              post_id:
+                comment.post_id,
+              user_id:
+                comment.user_id,
+              content:
+                comment.content,
+              created_at:
+                comment.created_at,
               user_name:
-                agency?.name ??
-                profile?.full_name ??
-                'Sem nome',
-
+                profile?.full_name ||
+                'Utilizador',
               user_avatar:
-                agency?.logo_url ??
                 profile?.avatar_url ??
                 null,
             }
           },
         ),
       )
-    } catch (err) {
-      console.error(
-        'Erro ao carregar comentários:',
-        err,
-      )
-
-      setComments([])
     } finally {
-      setCommentsLoading(
-        false,
-      )
+      setCommentsLoading(false)
     }
   }
 
-  /*
-   * FECHAR COMENTÁRIOS
-   */
-  function closeComments() {
-    setCommentsOpen(false)
-    setSelectedPostId(null)
-    setComments([])
-    setNewComment('')
-  }
+  async function addComment() {
+    const userId =
+      currentUserIdRef.current
 
-  /*
-   * ENVIAR COMENTÁRIO
-   */
-  async function submitComment() {
     if (
-      !currentUserId ||
-      !selectedPostId
+      !userId ||
+      !selectedPost ||
+      !commentText.trim()
     ) {
-      window.location.href =
-        '/login'
-
       return
     }
 
     const text =
-      newComment.trim()
+      commentText.trim()
 
-    if (!text) return
+    setCommentText('')
 
-    setCommentSubmitting(
-      true,
+    const {
+      data,
+      error,
+    } = await supabase
+      .from(
+        'community_comments',
+      )
+      .insert({
+        post_id:
+          selectedPost.id,
+        user_id:
+          userId,
+        content: text,
+      })
+      .select(
+        'id, post_id, user_id, content, created_at',
+      )
+      .single()
+
+    if (error) {
+      console.error(error)
+      setCommentText(text)
+      return
+    }
+
+    const {
+      data: profile,
+    } = await supabase
+      .from('profiles')
+      .select(
+        'full_name, avatar_url',
+      )
+      .eq('id', userId)
+      .maybeSingle()
+
+    const newComment: Comment =
+      {
+        id: data.id,
+        post_id:
+          data.post_id,
+        user_id:
+          data.user_id,
+        content:
+          data.content,
+        created_at:
+          data.created_at,
+        user_name:
+          profile?.full_name ||
+          'Utilizador',
+        user_avatar:
+          profile?.avatar_url ??
+          null,
+      }
+
+    setComments(
+      (current) => [
+        ...current,
+        newComment,
+      ],
     )
 
-    try {
-      const {
-        data,
-        error,
-      } = await supabase
-        .from(
-          'community_comments',
-        )
-        .insert({
-          user_id:
-            currentUserId,
-          post_id:
-            selectedPostId,
-          comment: text,
-        })
-        .select(
-          'id, user_id, post_id, comment, created_at',
-        )
-        .single()
-
-      if (error)
-        throw error
-
-      /*
-       * PERFIL DO UTILIZADOR
-       */
-      const {
-        data: profile,
-        error: profileError,
-      } = await supabase
-        .from(
-          'profiles',
-        )
-        .select(
-          'full_name, avatar_url',
-        )
-        .eq(
-          'id',
-          currentUserId,
-        )
-        .maybeSingle()
-
-      if (profileError)
-        throw profileError
-
-      /*
-       * AGÊNCIA DO UTILIZADOR,
-       * caso seja agência.
-       */
-      const {
-        data: agency,
-        error: agencyError,
-      } = await supabase
-        .from(
-          'agencies',
-        )
-        .select(
-          'name, logo_url',
-        )
-        .eq(
-          'owner_id',
-          currentUserId,
-        )
-        .maybeSingle()
-
-      if (agencyError)
-        throw agencyError
-
-      setComments(
-        (current) => [
-          ...current,
-          {
-            ...data,
-
-            user_name:
-              agency?.name ??
-              profile?.full_name ??
-              'Você',
-
-            user_avatar:
-              agency?.logo_url ??
-              profile?.avatar_url ??
-              null,
-          },
-        ],
-      )
-
-      setPosts(
-        (current) =>
-          current.map(
-            (post) =>
-              post.id ===
-              selectedPostId
-                ? {
-                    ...post,
-                    comments_count:
-                      post.comments_count +
-                      1,
-                  }
-                : post,
-          ),
-      )
-
-      setNewComment('')
-    } catch (err) {
-      console.error(
-        'Erro ao enviar comentário:',
-        err,
-      )
-    } finally {
-      setCommentSubmitting(
-        false,
-      )
-    }
+    setPosts((current) =>
+      current.map((post) =>
+        post.id ===
+        selectedPost.id
+          ? {
+              ...post,
+              comments_count:
+                post.comments_count +
+                1,
+            }
+          : post,
+      ),
+    )
   }
 
   /*
-   * PARTILHA
+   * ============================================================
+   * SHARE
+   * ============================================================
    */
-  function openShare(
-    postId: string,
-  ) {
-    setSharePostId(
-      postId,
-    )
 
+  function openShare(
+    post: Post,
+  ) {
+    setSharePost(post)
     setShareOpen(true)
+    setMenuOpen(null)
   }
 
   function closeShare() {
     setShareOpen(false)
-    setSharePostId(null)
+    setSharePost(null)
   }
 
-  function getShareUrl(
-    postId: string,
-  ) {
-    return `${window.location.origin}/review?post=${postId}`
-  }
-
-  async function shareNative() {
-    if (!sharePostId)
-      return
-
-    const post =
-      posts.find(
-        (item) =>
-          item.id ===
-          sharePostId,
-      )
-
-    if (!post) return
+  async function copyLink() {
+    if (!sharePost) return
 
     const url =
-      getShareUrl(post.id)
+      `${window.location.origin}/review#review-post-${sharePost.id}`
 
     try {
-      if (
-        navigator.share
-      ) {
-        await navigator.share(
-          {
-            title:
-              post.caption ||
-              'Experiência no Wizenda',
-
-            text:
-              post.caption ||
-              'Veja esta experiência no Wizenda.',
-
-            url,
-          },
-        )
-
-        closeShare()
-
-        return
-      }
-
       await navigator.clipboard.writeText(
         url,
       )
 
-      alert(
-        'Link copiado.',
+      setShareOpen(false)
+      setSharePost(null)
+    } catch {
+      console.error(
+        'Não foi possível copiar o link.',
       )
-
-      closeShare()
-    } catch (err) {
-      console.error(err)
-    }
-  }
-
-  function shareWhatsApp() {
-    if (!sharePostId)
-      return
-
-    const post =
-      posts.find(
-        (item) =>
-          item.id ===
-          sharePostId,
-      )
-
-    if (!post) return
-
-    const url =
-      getShareUrl(post.id)
-
-    const text = `${
-      post.caption ||
-      'Veja esta experiência no Wizenda.'
-    }\n\n${url}`
-
-    window.open(
-      `https://wa.me/?text=${encodeURIComponent(
-        text,
-      )}`,
-      '_blank',
-      'noopener,noreferrer',
-    )
-
-    closeShare()
-  }
-
-  async function copyShareLink() {
-    if (!sharePostId)
-      return
-
-    try {
-      await navigator.clipboard.writeText(
-        getShareUrl(
-          sharePostId,
-        ),
-      )
-
-      alert(
-        'Link copiado com sucesso.',
-      )
-
-      closeShare()
-    } catch (err) {
-      console.error(err)
-
-      const textarea =
-        document.createElement(
-          'textarea',
-        )
-
-      textarea.value =
-        getShareUrl(
-          sharePostId,
-        )
-
-      document.body.appendChild(
-        textarea,
-      )
-
-      textarea.select()
-
-      document.execCommand(
-        'copy',
-      )
-
-      textarea.remove()
-
-      alert(
-        'Link copiado.',
-      )
-
-      closeShare()
     }
   }
 
   function openMedia() {
-    if (!sharePostId)
-      return
-
-    const post =
-      posts.find(
-        (item) =>
-          item.id ===
-          sharePostId,
-      )
-
-    if (!post) return
+    if (!sharePost) return
 
     window.open(
-      post.media_url,
+      sharePost.media_url,
       '_blank',
       'noopener,noreferrer',
     )
@@ -1383,97 +1548,94 @@ export default function ReviewPage() {
   }
 
   /*
-   * APAGAR PUBLICAÇÃO
+   * ============================================================
+   * DELETE
+   * ============================================================
    */
-  async function deletePost(
-    postId: string,
-  ) {
-    if (!currentUserId)
-      return
 
-    const post =
-      posts.find(
-        (item) =>
-          item.id ===
-          postId,
-      )
+  async function deletePost(
+    post: Post,
+  ) {
+    const userId =
+      currentUserIdRef.current
 
     if (
-      !post ||
-      post.user_id !==
-        currentUserId
+      !userId ||
+      post.user_id !== userId
     ) {
       return
     }
 
     const confirmed =
       window.confirm(
-        'Tem certeza que deseja apagar esta publicação?',
+        'Tem certeza que deseja eliminar esta publicação?',
       )
 
-    if (!confirmed)
-      return
+    if (!confirmed) return
 
-    const { error } =
-      await supabase
-        .from(
-          'community_posts',
-        )
-        .delete()
-        .eq(
-          'id',
-          postId,
-        )
-        .eq(
-          'user_id',
-          currentUserId,
-        )
+    if (
+      activePostIdRef.current ===
+      post.id
+    ) {
+      stopCurrentAudio()
+
+      setActivePostId(null)
+      activePostIdRef.current =
+        null
+    }
+
+    const {
+      error,
+    } = await supabase
+      .from('community_posts')
+      .delete()
+      .eq('id', post.id)
+      .eq(
+        'user_id',
+        userId,
+      )
 
     if (error) {
       console.error(error)
-
-      alert(
-        'Não foi possível apagar a publicação.',
-      )
-
       return
     }
 
-    setPosts(
-      (current) =>
-        current.filter(
-          (item) =>
-            item.id !==
-            postId,
-        ),
+    setPosts((current) =>
+      current.filter(
+        (item) =>
+          item.id !== post.id,
+      ),
     )
+
+    setMenuOpen(null)
   }
 
   /*
-   * TIPO DA PUBLICAÇÃO
+   * ============================================================
+   * LABELS
+   * ============================================================
    */
+
   function getPostTypeLabel(
     post: Post,
   ) {
     if (
-      post.user_role ===
+      post.post_type ===
       'agency'
     ) {
       return 'Agência'
     }
 
     if (
-      post.user_role ===
+      post.post_type ===
       'hotel'
     ) {
       return 'Hotel'
     }
 
     if (
-      post.user_role ===
-        'admin' ||
-      post.user_role ===
-        'wizenda'
+      post.post_type ===
+      'wizenda'
     ) {
       return 'Wizenda'
     }
@@ -1482,987 +1644,884 @@ export default function ReviewPage() {
   }
 
   /*
-   * ÁUDIO
-   */
-  function toggleAudio(
-    post: Post,
-  ) {
-    if (!post.sound_url) {
-      setSoundOn(
-        (value) => !value,
-      )
-
-      return
-    }
-
-    if (
-      activeAudio ===
-      post.id
-    ) {
-      setActiveAudio(null)
-      setSoundOn(false)
-
-      return
-    }
-
-    setActiveAudio(
-      post.id,
-    )
-
-    setSoundOn(true)
-  }
-
-  /*
+   * ============================================================
    * LOADING
+   * ============================================================
    */
+
   if (loading) {
     return (
-      <main className="min-h-screen bg-black text-white">
-        <div className="flex min-h-screen items-center justify-center">
-          <div className="text-sm text-white/70">
+      <main className="flex h-screen items-center justify-center bg-black text-white">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+          <span className="text-sm text-white/60">
             A carregar experiências...
-          </div>
+          </span>
         </div>
       </main>
     )
   }
 
   /*
-   * ERRO
+   * ============================================================
+   * EMPTY
+   * ============================================================
    */
-  if (error) {
+
+  if (!posts.length) {
     return (
-      <main className="min-h-screen bg-[#f7f7f7]">
-        <div className="mx-auto flex min-h-screen max-w-md items-center justify-center px-6">
-          <div className="w-full rounded-[4px] bg-white p-6 text-center shadow-sm">
-
-            <p className="text-sm text-gray-600">
-              {error}
-            </p>
-
-            <button
-              type="button"
-              onClick={
-                loadPosts
-              }
-              className="mt-5 rounded-[4px] bg-[#FF5A1F] px-5 py-3 text-sm font-semibold text-white"
-            >
-              Tentar novamente
-            </button>
-
-          </div>
-        </div>
-      </main>
-    )
-  }
-
-  return (
-    <main className="relative h-screen overflow-hidden bg-black text-white">
-
-      {/* HEADER */}
-
-      <header className="pointer-events-none fixed left-0 right-0 top-0 z-50">
-
-        <div className="flex h-16 items-center justify-between px-5">
-
-          <button
-            type="button"
-            onClick={() =>
-              window.history.back()
-            }
-            aria-label="Fechar"
-            className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-black/30 backdrop-blur-md"
-          >
-            <X size={22} />
-          </button>
-
-          <div className="pointer-events-auto flex items-center gap-2">
-
-            <button
-              type="button"
-              aria-label="Mais opções"
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-black/30 backdrop-blur-md"
-            >
-              <MoreVertical size={22} />
-            </button>
-
-            <Link
-              href="/review/create"
-              aria-label="Criar publicação"
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#FF5A1F]"
-            >
-              <Plus size={21} />
-            </Link>
-
-          </div>
-
-        </div>
-
-      </header>
-
-      {posts.length === 0 ? (
-
-        <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-
-          <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-white/10">
-            <Plus size={28} />
+      <main className="flex h-screen items-center justify-center bg-black px-6 text-center text-white">
+        <div>
+          <div className="mb-4 text-5xl">
+            🌍
           </div>
 
           <h1 className="text-xl font-bold">
             Ainda não existem experiências
           </h1>
 
-          <p className="mt-2 max-w-sm text-sm text-white/60">
-            Seja o primeiro a partilhar uma experiência no Wizenda.
+          <p className="mt-2 text-sm text-white/60">
+            Seja o primeiro a partilhar
+            uma experiência na Wizenda.
           </p>
 
           <Link
             href="/review/create"
-            className="mt-6 rounded-[4px] bg-[#FF5A1F] px-6 py-3 text-sm font-semibold"
+            className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-black"
           >
-            Criar publicação
+            <Plus size={17} />
+            Criar review
           </Link>
+        </div>
+      </main>
+    )
+  }
 
+  return (
+    <main className="relative h-screen overflow-hidden bg-black">
+      {/*
+       * ========================================================
+       * AUDIO GLOBAL
+       * ========================================================
+       *
+       * Apenas um <audio>.
+       *
+       * Nunca existe:
+       *
+       * <audio> review 1
+       * <audio> review 2
+       * <audio> review 3
+       *
+       * Existe apenas:
+       *
+       * <audio> atual
+       *
+       * E nós trocamos o src conforme o review.
+       */}
+
+      <audio
+        ref={audioRef}
+        loop
+        preload="auto"
+        className="hidden"
+      />
+
+      {/*
+       * ========================================================
+       * HEADER
+       * ========================================================
+       */}
+
+      <header className="pointer-events-none absolute left-0 right-0 top-0 z-40 flex items-center justify-between px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top))] sm:px-6">
+        <div className="pointer-events-auto">
+          <Link
+            href="/"
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/30 text-white shadow-lg backdrop-blur-xl transition hover:bg-black/50"
+            aria-label="Fechar e voltar"
+          >
+            <X size={22} />
+          </Link>
         </div>
 
-      ) : (
+        <div className="pointer-events-auto flex items-center gap-2">
+          <Link
+            href="/review/create"
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/30 text-white shadow-lg backdrop-blur-xl transition hover:bg-black/50"
+            aria-label="Criar review"
+          >
+            <Plus size={22} />
+          </Link>
 
-        <div className="h-screen snap-y snap-mandatory overflow-y-auto">
+          
+        </div>
+      </header>
 
-          {posts.map(
-            (post) => (
+      
 
-              <article
-                key={post.id}
-                id={`review-post-${post.id}`}
-                className="relative h-screen snap-start overflow-hidden bg-black"
-              >
+      {/*
+       * ========================================================
+       * FEED
+       * ========================================================
+       */}
 
-                {/* MEDIA */}
+      <div
+        ref={feedRef}
+        className="review-feed-container h-screen snap-y snap-mandatory touch-pan-y overflow-y-auto overscroll-y-contain"
+      >
+        {posts.map((post) => (
+          <article
+            key={post.id}
+            id={`review-post-${post.id}`}
+            data-review-id={
+              post.id
+            }
+            className="relative h-screen snap-start snap-always overflow-hidden bg-black"
+          >
+            {/*
+             * ==================================================
+             * MEDIA
+             * ==================================================
+             */}
 
-                {post.media_type ===
-                'video' ? (
+            <div className="absolute inset-0">
+              {post.media_type ===
+              'video' ? (
+                <video
+                  src={
+                    post.media_url
+                  }
+                  className="absolute inset-0 h-full w-full object-cover"
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                />
+              ) : (
+                <img
+                  src={
+                    post.media_url
+                  }
+                  alt={
+                    post.caption ||
+                    'Experiência Wizenda'
+                  }
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              )}
 
-                  <video
-                    src={
-                      post.media_url
-                    }
-                    className="absolute inset-0 h-full w-full object-cover"
-                    autoPlay
-                    loop
-                    muted={
-                      !soundOn
-                    }
-                    playsInline
-                  />
+              {/*
+               * Gradientes para melhorar
+               * leitura do conteúdo.
+               */}
 
-                ) : (
+              <div className="absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-black/85" />
 
-                  <img
-                    src={
-                      post.media_url
-                    }
-                    alt={
-                      post.caption ||
-                      'Experiência Wizenda'
-                    }
-                    className="absolute inset-0 h-full w-full object-cover"
-                  />
+              <div className="absolute inset-x-0 bottom-0 h-[55%] bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+            </div>
 
-                )}
+            {/*
+             * ==================================================
+             * CONTEÚDO INFERIOR
+             * ==================================================
+             */}
 
-                {/* ÁUDIO REAL */}
+            <div className="absolute inset-x-0 bottom-0 z-20 max-h-[52vh] overflow-hidden px-4 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] pr-[5.75rem] sm:px-6 sm:pb-8 sm:pr-28">
+              {/*
+               * AUTOR
+               */}
 
-                {post.sound_url &&
-                  activeAudio ===
-                    post.id && (
-
-                    <audio
+              <div className="mb-3 flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10 shadow-lg backdrop-blur-md">
+                  {post.user_avatar ? (
+                    <img
                       src={
-                        post.sound_url
+                        post.user_avatar
                       }
-                      autoPlay
-                      loop
-                      muted={
-                        !soundOn
-                      }
-                    />
-
-                  )}
-
-                <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-black/30" />
-
-                {/* INFORMAÇÕES */}
-
-                <div className="absolute bottom-0 left-0 right-0 z-20 pb-7 pl-5 pr-24">
-
-                  <div className="mb-3 flex items-center gap-3">
-
-                    {/* FOTO */}
-
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/20 text-sm font-bold backdrop-blur-md">
-
-                      {post.user_avatar ? (
-
-                        <img
-                          src={
-                            post.user_avatar
-                          }
-                          alt={
-                            post.user_name
-                          }
-                          className="h-full w-full object-cover"
-                        />
-
-                      ) : (
-
+                      alt={
                         post.user_name
-                          .slice(
-                            0,
-                            1,
-                          )
-                          .toUpperCase()
-
-                      )}
-
-                    </div>
-
-                    <div>
-
-                      <div className="flex items-center gap-2">
-
-                        {/* NOME */}
-
-                        <span className="text-sm font-bold">
-                          {
-                            post.user_name
-                          }
-                        </span>
-
-                        {/* TIPO */}
-
-                        <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-medium backdrop-blur-md">
-
-                          {
-                            getPostTypeLabel(
-                              post,
-                            )
-                          }
-
-                        </span>
-
-                      </div>
-
-                      {post.location && (
-
-                        <div className="mt-1 flex items-center gap-1 text-xs text-white/70">
-
-                          <MapPin size={12} />
-
-                          {
-                            post.location
-                          }
-
-                        </div>
-
-                      )}
-
-                    </div>
-
-                  </div>
-
-                  {post.caption && (
-
-                    <p className="max-w-xl whitespace-pre-wrap text-sm leading-6 text-white">
-                      {
-                        post.caption
                       }
-                    </p>
-
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-sm font-semibold text-white">
+                      {post.user_name
+                        .charAt(
+                          0,
+                        )
+                        .toUpperCase()}
+                    </span>
                   )}
-
-                  {post.rating && (
-
-                    <div className="mt-3 flex items-center gap-1">
-
-                      {Array.from({
-                        length: 5,
-                      }).map(
-                        (_, index) => (
-
-                          <Star
-                            key={
-                              index
-                            }
-                            size={
-                              14
-                            }
-                            className={
-                              index <
-                              post.rating!
-                                ? 'fill-yellow-400 text-yellow-400'
-                                : 'text-white/40'
-                            }
-                          />
-
-                        ),
-                      )}
-
-                    </div>
-
-                  )}
-
-                  {post.sound_name && (
-
-                    <div className="mt-3 flex items-center gap-2 text-xs text-white/70">
-
-                      <Volume2 size={13} />
-
-                      <span>
-                        {
-                          post.sound_name
-                        }
-                      </span>
-
-                    </div>
-
-                  )}
-
                 </div>
 
-                {/* AÇÕES */}
-
-                <div className="absolute bottom-8 right-4 z-30 flex flex-col items-center gap-4">
-
-                  {/* LIKE */}
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      toggleLike(
-                        post,
-                      )
-                    }
-                    aria-label="Gostar"
-                    className="flex flex-col items-center gap-1"
-                  >
-
-                    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/25 backdrop-blur-md">
-
-                      <Heart
-                        size={22}
-                        className={
-                          post.liked
-                            ? 'fill-red-500 text-red-500'
-                            : 'text-white'
-                        }
-                      />
-
-                    </span>
-
-                    <span className="text-[11px] font-medium">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="max-w-[190px] truncate text-sm font-bold text-white drop-shadow">
                       {
-                        post.likes_count
+                        post.user_name
                       }
                     </span>
 
-                  </button>
-
-                  {/* COMENTÁRIOS */}
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      openComments(
-                        post.id,
-                      )
-                    }
-                    aria-label="Comentários"
-                    className="flex flex-col items-center gap-1"
-                  >
-
-                    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/25 backdrop-blur-md">
-
-                      <MessageCircle
-                        size={
-                          21
-                        }
-                      />
-
-                    </span>
-
-                    <span className="text-[11px] font-medium">
-                      {
-                        post.comments_count
-                      }
-                    </span>
-
-                  </button>
-
-                  {/* GUARDAR */}
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      toggleSave(
+                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-medium uppercase tracking-wide text-white/70 backdrop-blur-md">
+                      {getPostTypeLabel(
                         post,
-                      )
-                    }
-                    aria-label="Guardar"
-                    className="flex flex-col items-center gap-1"
-                  >
-
-                    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/25 backdrop-blur-md">
-
-                      <Bookmark
-                        size={
-                          21
-                        }
-                        className={
-                          post.saved
-                            ? 'fill-white text-white'
-                            : 'text-white'
-                        }
-                      />
-
-                    </span>
-
-                    <span className="text-[11px] font-medium">
-                      Guardar
-                    </span>
-
-                  </button>
-
-                  {/* PARTILHAR */}
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      openShare(
-                        post.id,
-                      )
-                    }
-                    aria-label="Partilhar"
-                    className="flex h-11 w-11 items-center justify-center rounded-full bg-black/25 text-white backdrop-blur-md"
-                  >
-
-                    <Send
-                      size={
-                        21
-                      }
-                    />
-
-                  </button>
-
-                  {/* ÁUDIO */}
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      toggleAudio(
-                        post,
-                      )
-                    }
-                    aria-label={
-                      soundOn
-                        ? 'Desligar som'
-                        : 'Ligar som'
-                    }
-                    className="flex flex-col items-center gap-1"
-                  >
-
-                    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/25 backdrop-blur-md">
-
-                      {soundOn &&
-                      activeAudio ===
-                        post.id ? (
-
-                        <Volume2
-                          size={
-                            21
-                          }
-                        />
-
-                      ) : (
-
-                        <VolumeX
-                          size={
-                            21
-                          }
-                        />
-
                       )}
-
                     </span>
+                  </div>
+                </div>
+              </div>
 
-                    <span className="text-[11px] font-medium">
+              {/*
+               * ==================================================
+               * AGÊNCIA / HOTEL MARCADO
+               * ==================================================
+               *
+               * Mais compacto para não ficar feio
+               * nem ocupar demasiado espaço.
+               */}
 
-                      {soundOn
-                        ? 'Som'
-                        : 'Mudo'}
+              {post.tagged_name && (
+                <div className="mb-3 flex max-w-full items-center gap-2">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-black/30 backdrop-blur-xl">
+                    {post.tagged_image ? (
+                      <img
+                        src={
+                          post.tagged_image
+                        }
+                        alt={
+                          post.tagged_name
+                        }
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-xs">
+                        {post.tagged_type ===
+                        'hotel'
+                          ? '🏨'
+                          : '🏢'}
+                      </span>
+                    )}
+                  </div>
 
-                    </span>
+                  <div className="min-w-0 rounded-full border border-white/10 bg-black/30 px-3 py-1.5 backdrop-blur-xl">
+                    <div className="flex max-w-full items-center gap-1.5">
+                      <span className="shrink-0 text-[9px] uppercase tracking-wider text-white/45">
+                        Com
+                      </span>
 
-                  </button>
+                      <span className="max-w-[190px] truncate text-xs font-semibold text-white">
+                        {
+                          post.tagged_name
+                        }
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-                  {/* APAGAR */}
+              {/*
+               * ==================================================
+               * DESCRIÇÃO
+               * ==================================================
+               */}
 
-                  {currentUserId ===
-                    post.user_id && (
+              {post.caption && (
+                <p className="max-w-[520px] text-sm leading-5 text-white drop-shadow-md sm:text-[15px] sm:leading-6">
+                  {
+                    post.caption
+                  }
+                </p>
+              )}
+
+              {/*
+               * ==================================================
+               * LOCALIZAÇÃO
+               * ==================================================
+               */}
+
+              {post.location && (
+                <div className="mt-2 flex max-w-full items-center gap-1.5 text-xs text-white/75">
+                  <MapPin
+                    size={13}
+                    className="shrink-0"
+                  />
+
+                  <span className="truncate">
+                    {
+                      post.location
+                    }
+                  </span>
+                </div>
+              )}
+
+              {/*
+               * ==================================================
+               * RATING
+               * ==================================================
+               */}
+
+              {post.rating !==
+                null && (
+                <div className="mt-2 flex items-center gap-1">
+                  <Star
+                    size={14}
+                    className="fill-yellow-400 text-yellow-400"
+                  />
+
+                  <span className="text-xs font-semibold text-white">
+                    {post.rating.toFixed(
+                      1,
+                    )}
+                  </span>
+                </div>
+              )}
+
+              {/*
+               * ==================================================
+               * MÚSICA
+               * ==================================================
+               *
+               * Título + artista.
+               */}
+
+              {post.sound_name && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    toggleAudio(
+                      post,
+                    )
+                  }
+                  className="mt-3 flex max-w-[min(100%,340px)] items-center gap-2 rounded-full border border-white/10 bg-black/35 px-2.5 py-1.5 text-left backdrop-blur-xl transition hover:bg-black/50"
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/10">
+                    {soundOn &&
+                    activePostIdRef.current ===
+                      post.id ? (
+                      <Volume2
+                        size={14}
+                        className="text-white"
+                      />
+                    ) : (
+                      <VolumeX
+                        size={14}
+                        className="text-white/60"
+                      />
+                    )}
+                  </span>
+
+                  <div className="min-w-0">
+                    <div className="max-w-[250px] truncate text-xs font-semibold text-white">
+                      {
+                        post.sound_name
+                      }
+                    </div>
+
+                    {post.sound_artist && (
+                      <div className="max-w-[250px] truncate text-[10px] text-white/55">
+                        {
+                          post.sound_artist
+                        }
+                      </div>
+                    )}
+                  </div>
+                </button>
+              )}
+
+              {/*
+               * Se o browser bloquear autoplay,
+               * indicamos apenas visualmente pelo botão
+               * de som. O primeiro toque desbloqueia.
+               */}
+
+              {!audioUnlocked &&
+                post.sound_url &&
+                activePostId ===
+                  post.id && (
+                  <div className="mt-2 text-[10px] text-white/45">
+                    Toca no ecrã para
+                    ativar o som
+                  </div>
+                )}
+            </div>
+
+            {/*
+             * ==================================================
+             * AÇÕES LATERAIS
+             * ==================================================
+             */}
+
+            <div className="absolute bottom-[calc(env(safe-area-inset-bottom)+1.25rem)] right-3 z-30 flex flex-col items-center gap-3 sm:bottom-8 sm:right-5 sm:gap-4">
+              {/*
+               * LIKE
+               */}
+
+              <button
+                type="button"
+                onClick={() =>
+                  toggleLike(
+                    post,
+                  )
+                }
+                className="flex flex-col items-center gap-1 text-white"
+                aria-label="Gostar"
+              >
+                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/30 backdrop-blur-xl transition hover:bg-black/50">
+                  <Heart
+                    size={21}
+                    className={
+                      post.liked
+                        ? 'fill-red-500 text-red-500'
+                        : 'text-white'
+                    }
+                  />
+                </span>
+
+                <span className="text-[10px] font-medium drop-shadow">
+                  {
+                    post.likes_count
+                  }
+                </span>
+              </button>
+
+              {/*
+               * COMENTÁRIOS
+               */}
+
+              <button
+                type="button"
+                onClick={() =>
+                  openComments(
+                    post,
+                  )
+                }
+                className="flex flex-col items-center gap-1 text-white"
+                aria-label="Comentários"
+              >
+                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/30 backdrop-blur-xl transition hover:bg-black/50">
+                  <MessageCircle
+                    size={21}
+                  />
+                </span>
+
+                <span className="text-[10px] font-medium drop-shadow">
+                  {
+                    post.comments_count
+                  }
+                </span>
+              </button>
+
+              {/*
+               * GUARDAR
+               */}
+
+              <button
+                type="button"
+                onClick={() =>
+                  toggleSave(
+                    post,
+                  )
+                }
+                className="flex flex-col items-center gap-1 text-white"
+                aria-label="Guardar"
+              >
+                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/30 backdrop-blur-xl transition hover:bg-black/50">
+                  <Bookmark
+                    size={21}
+                    className={
+                      post.saved
+                        ? 'fill-white text-white'
+                        : 'text-white'
+                    }
+                  />
+                </span>
+              </button>
+
+              {/*
+               * PARTILHAR
+               */}
+
+              <button
+                type="button"
+                onClick={() =>
+                  openShare(
+                    post,
+                  )
+                }
+                className="flex flex-col items-center gap-1 text-white"
+                aria-label="Partilhar"
+              >
+                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/30 backdrop-blur-xl transition hover:bg-black/50">
+                  <Send
+                    size={20}
+                  />
+                </span>
+              </button>
+
+              {currentUserIdRef.current === post.user_id && (
+                <button
+                  type="button"
+                  onClick={() => deletePost(post)}
+                  className="flex flex-col items-center gap-1 text-white"
+                  aria-label="Eliminar publicação"
+                >
+                  <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/30 backdrop-blur-xl transition hover:bg-red-500/30">
+                    <Trash2 size={20} />
+                  </span>
+                </button>
+              )}
+
+              {/*
+               * SOM
+               */}
+
+              {post.sound_url && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    toggleAudio(
+                      post,
+                    )
+                  }
+                  className="flex flex-col items-center gap-1 text-white"
+                  aria-label={
+                    soundOn
+                      ? 'Desligar som'
+                      : 'Ligar som'
+                  }
+                >
+                  <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/30 backdrop-blur-xl transition hover:bg-black/50">
+                    {soundOn &&
+                    activePostId ===
+                      post.id ? (
+                      <Volume2
+                        size={20}
+                      />
+                    ) : (
+                      <VolumeX
+                        size={20}
+                      />
+                    )}
+                  </span>
+                </button>
+              )}
+
+              {/*
+               * MENU
+               */}
+
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setMenuOpen(
+                      (current) =>
+                        current ===
+                        post.id
+                          ? null
+                          : post.id,
+                    )
+                  }
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-xl transition hover:bg-black/50"
+                  aria-label="Mais opções"
+                >
+                  <MoreVertical
+                    size={20}
+                  />
+                </button>
+
+                {menuOpen ===
+                  post.id && (
+                  <div className="absolute bottom-0 right-14 z-50 w-52 overflow-hidden rounded-2xl border border-white/10 bg-black/85 p-1 shadow-2xl backdrop-blur-xl">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        toggleSave(
+                          post,
+                        )
+                      }
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-white transition hover:bg-white/10"
+                    >
+                      <Bookmark
+                        size={17}
+                      />
+
+                      <span>
+                        {post.saved
+                          ? 'Remover dos guardados'
+                          : 'Guardar publicação'}
+                      </span>
+                    </button>
 
                     <button
                       type="button"
                       onClick={() =>
-                        deletePost(
-                          post.id,
+                        openShare(
+                          post,
                         )
                       }
-                      aria-label="Apagar publicação"
-                      className="flex h-11 w-11 items-center justify-center rounded-full bg-black/25 text-white backdrop-blur-md"
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-white transition hover:bg-white/10"
                     >
-
-                      <Trash2
-                        size={
-                          20
-                        }
+                      <Send
+                        size={17}
                       />
 
+                      <span>
+                        Partilhar
+                      </span>
                     </button>
 
-                  )}
 
-                </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
 
-              </article>
+      {/*
+       * ========================================================
+       * MODAL DE COMENTÁRIOS
+       * ========================================================
+       */}
 
-            ),
-          )}
-
-        </div>
-
-      )}
-
-      {/* COMENTÁRIOS */}
-
-      {commentsOpen && (
-
-        <div className="fixed inset-0 z-[100]">
-
-          <button
-            type="button"
-            onClick={
-              closeComments
-            }
-            className="absolute inset-0 bg-black/60"
-            aria-label="Fechar comentários"
-          />
-
-          <div className="absolute bottom-0 left-0 right-0 flex max-h-[80vh] flex-col rounded-t-[18px] bg-white text-gray-950">
-
-            {/* HEADER */}
-
-            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-
-              <div>
-
-                <h2 className="text-base font-bold">
+      {commentsOpen &&
+        selectedPost && (
+          <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60 backdrop-blur-sm">
+            <div className="flex max-h-[82vh] w-full max-w-xl flex-col overflow-hidden rounded-t-3xl bg-white">
+              <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+                <h2 className="text-base font-bold text-gray-900">
                   Comentários
                 </h2>
 
-                {selectedPost && (
-
-                  <p className="mt-1 text-xs text-gray-500">
-
-                    {
-                      selectedPost.comments_count
-                    }{' '}
-
-                    comentário
-
-                    {selectedPost.comments_count ===
-                    1
-                      ? ''
-                      : 's'}
-
-                  </p>
-
-                )}
-
-              </div>
-
-              <button
-                type="button"
-                onClick={
-                  closeComments
-                }
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100"
-                aria-label="Fechar"
-              >
-
-                <X size={18} />
-
-              </button>
-
-            </div>
-
-            {/* LISTA */}
-
-            <div className="flex-1 overflow-y-auto px-5 py-4">
-
-              {commentsLoading ? (
-
-                <div className="py-10 text-center text-sm text-gray-500">
-                  A carregar comentários...
-                </div>
-
-              ) : comments.length ===
-                0 ? (
-
-                <div className="py-10 text-center text-sm text-gray-500">
-                  Ainda não existem comentários.
-                </div>
-
-              ) : (
-
-                <div className="space-y-5">
-
-                  {comments.map(
-                    (comment) => (
-
-                      <div
-                        key={
-                          comment.id
-                        }
-                        className="flex gap-3"
-                      >
-
-                        {/* FOTO DO COMENTADOR */}
-
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-100 text-xs font-bold">
-
-                          {comment.user_avatar ? (
-
-                            <img
-                              src={
-                                comment.user_avatar
-                              }
-                              alt={
-                                comment.user_name
-                              }
-                              className="h-full w-full object-cover"
-                            />
-
-                          ) : (
-
-                            comment.user_name
-                              .slice(
-                                0,
-                                1,
-                              )
-                              .toUpperCase()
-
-                          )}
-
-                        </div>
-
-                        <div className="min-w-0">
-
-                          <div className="text-sm font-semibold">
-
-                            {
-                              comment.user_name
-                            }
-
-                          </div>
-
-                          <p className="mt-1 text-sm leading-5 text-gray-700">
-
-                            {
-                              comment.comment
-                            }
-
-                          </p>
-
-                        </div>
-
-                      </div>
-
-                    ),
-                  )}
-
-                </div>
-
-              )}
-
-            </div>
-
-            {/* ESCREVER COMENTÁRIO */}
-
-            <div className="border-t border-gray-100 p-4">
-
-              <div className="flex gap-2">
-
-                <input
-                  value={
-                    newComment
-                  }
-                  onChange={(
-                    event,
-                  ) =>
-                    setNewComment(
-                      event.target
-                        .value,
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCommentsOpen(
+                      false,
                     )
                   }
-                  onKeyDown={(
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100"
+                >
+                  <X
+                    size={18}
+                  />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-5 py-4">
+                {commentsLoading ? (
+                  <div className="py-10 text-center text-sm text-gray-500">
+                    A carregar...
+                  </div>
+                ) : comments.length ===
+                  0 ? (
+                  <div className="py-10 text-center">
+                    <MessageCircle
+                      size={28}
+                      className="mx-auto text-gray-300"
+                    />
+
+                    <p className="mt-3 text-sm text-gray-500">
+                      Ainda não há
+                      comentários.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-5">
+                    {comments.map(
+                      (comment) => (
+                        <div
+                          key={
+                            comment.id
+                          }
+                          className="flex gap-3"
+                        >
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-100">
+                            {comment.user_avatar ? (
+                              <img
+                                src={
+                                  comment.user_avatar
+                                }
+                                alt={
+                                  comment.user_name
+                                }
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <span className="text-xs font-semibold text-gray-600">
+                                {comment.user_name
+                                  .charAt(
+                                    0,
+                                  )
+                                  .toUpperCase()}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold text-gray-900">
+                              {
+                                comment.user_name
+                              }
+                            </div>
+
+                            <p className="mt-1 text-sm leading-5 text-gray-600">
+                              {
+                                comment.content
+                              }
+                            </p>
+                          </div>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-gray-100 p-4">
+                <form
+                  onSubmit={(
                     event,
                   ) => {
-
-                    if (
-                      event.key ===
-                      'Enter'
-                    ) {
-                      submitComment()
-                    }
-
+                    event.preventDefault()
+                    addComment()
                   }}
-                  placeholder="Escreve um comentário..."
-                  className="min-w-0 flex-1 rounded-[4px] border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-[#FF5A1F]"
-                />
+                  className="flex items-center gap-2"
+                >
+                  <input
+                    value={
+                      commentText
+                    }
+                    onChange={(
+                      event,
+                    ) =>
+                      setCommentText(
+                        event.target
+                          .value,
+                      )
+                    }
+                    placeholder="Escreva um comentário..."
+                    className="min-w-0 flex-1 rounded-full bg-gray-100 px-4 py-3 text-sm outline-none placeholder:text-gray-400"
+                  />
+
+                  <button
+                    type="submit"
+                    disabled={
+                      !commentText.trim()
+                    }
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black text-white disabled:opacity-30"
+                  >
+                    <Send
+                      size={17}
+                    />
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+      {/*
+       * ========================================================
+       * MODAL DE PARTILHA
+       * ========================================================
+       */}
+
+      {shareOpen &&
+        sharePost && (
+          <div
+            className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 px-4 backdrop-blur-sm"
+            onClick={closeShare}
+          >
+            <div
+              className="w-full max-w-md rounded-2xl bg-white p-4 shadow-2xl"
+              onClick={(
+                event,
+              ) =>
+                event.stopPropagation()
+              }
+            >
+              <div className="mb-3 flex items-center justify-between px-1">
+                <h2 className="text-base font-bold text-gray-900">
+                  Partilhar
+                </h2>
+
+                <button
+                  type="button"
+                  onClick={closeShare}
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100"
+                >
+                  <X
+                    size={18}
+                  />
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={
+                    copyLink
+                  }
+                  className="flex w-full items-center gap-4 rounded-[10px] border border-gray-100 px-4 py-4 text-left transition hover:bg-gray-50"
+                >
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100">
+                    <Bookmark
+                      size={19}
+                    />
+                  </span>
+
+                  <div>
+                    <div className="text-sm font-semibold">
+                      Copiar link
+                    </div>
+
+                    <div className="text-xs text-gray-500">
+                      Copiar o link desta
+                      publicação
+                    </div>
+                  </div>
+                </button>
 
                 <button
                   type="button"
                   onClick={
-                    submitComment
+                    openMedia
                   }
-                  disabled={
-                    commentSubmitting ||
-                    !newComment.trim()
-                  }
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[4px] bg-[#FF5A1F] text-white disabled:opacity-50"
-                  aria-label="Enviar comentário"
+                  className="flex w-full items-center gap-4 rounded-[10px] border border-gray-100 px-4 py-4 text-left transition hover:bg-gray-50"
                 >
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100">
+                    <MapPin
+                      size={19}
+                    />
+                  </span>
 
-                  <Send size={18} />
+                  <div>
+                    <div className="text-sm font-semibold">
+                      Abrir mídia
+                    </div>
 
+                    <div className="text-xs text-gray-500">
+                      Abrir a imagem ou
+                      vídeo original
+                    </div>
+                  </div>
                 </button>
 
+                <button
+                  type="button"
+                  onClick={
+                    closeShare
+                  }
+                  className="mt-2 flex w-full items-center justify-center rounded-[10px] bg-gray-100 px-4 py-4 text-sm font-semibold"
+                >
+                  Cancelar
+                </button>
               </div>
-
             </div>
-
           </div>
-
-        </div>
-
-      )}
-
-      {/* PARTILHA */}
-
-      {shareOpen && (
-
-        <div className="fixed inset-0 z-[110]">
-
-          <button
-            type="button"
-            onClick={
-              closeShare
-            }
-            className="absolute inset-0 bg-black/60"
-            aria-label="Fechar partilha"
-          />
-
-          <div className="absolute bottom-0 left-0 right-0 rounded-t-[18px] bg-white p-5 text-gray-950">
-
-            <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-gray-200" />
-
-            <div className="mb-5 flex items-center justify-between">
-
-              <div>
-
-                <h2 className="text-lg font-bold">
-                  Partilhar
-                </h2>
-
-                <p className="mt-1 text-xs text-gray-500">
-                  Partilha esta experiência com outras pessoas.
-                </p>
-
-              </div>
-
-              <button
-                type="button"
-                onClick={
-                  closeShare
-                }
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100"
-                aria-label="Fechar"
-              >
-
-                <X size={18} />
-
-              </button>
-
-            </div>
-
-            <div className="space-y-2">
-
-              {/* PARTILHAR */}
-
-              <button
-                type="button"
-                onClick={
-                  shareNative
-                }
-                className="flex w-full items-center gap-4 rounded-[4px] border border-gray-100 px-4 py-4 text-left transition hover:bg-gray-50"
-              >
-
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#FF5A1F]/10 text-[#FF5A1F]">
-
-                  <Send
-                    size={
-                      19
-                    }
-                  />
-
-                </span>
-
-                <div>
-
-                  <div className="text-sm font-semibold">
-                    Partilhar
-                  </div>
-
-                  <div className="text-xs text-gray-500">
-                    Usar as opções de partilha do telemóvel
-                  </div>
-
-                </div>
-
-              </button>
-
-              {/* WHATSAPP */}
-
-              <button
-                type="button"
-                onClick={
-                  shareWhatsApp
-                }
-                className="flex w-full items-center gap-4 rounded-[4px] border border-gray-100 px-4 py-4 text-left transition hover:bg-gray-50"
-              >
-
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-green-50 text-green-600">
-
-                  <MessageCircle
-                    size={
-                      19
-                    }
-                  />
-
-                </span>
-
-                <div>
-
-                  <div className="text-sm font-semibold">
-                    WhatsApp
-                  </div>
-
-                  <div className="text-xs text-gray-500">
-                    Enviar esta experiência pelo WhatsApp
-                  </div>
-
-                </div>
-
-              </button>
-
-              {/* COPIAR */}
-
-              <button
-                type="button"
-                onClick={
-                  copyShareLink
-                }
-                className="flex w-full items-center gap-4 rounded-[4px] border border-gray-100 px-4 py-4 text-left transition hover:bg-gray-50"
-              >
-
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100">
-
-                  <Bookmark
-                    size={
-                      19
-                    }
-                  />
-
-                </span>
-
-                <div>
-
-                  <div className="text-sm font-semibold">
-                    Copiar link
-                  </div>
-
-                  <div className="text-xs text-gray-500">
-                    Copiar o link desta publicação
-                  </div>
-
-                </div>
-
-              </button>
-
-              {/* ABRIR MÍDIA */}
-
-              <button
-                type="button"
-                onClick={
-                  openMedia
-                }
-                className="flex w-full items-center gap-4 rounded-[4px] border border-gray-100 px-4 py-4 text-left transition hover:bg-gray-50"
-              >
-
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100">
-
-                  <MapPin
-                    size={
-                      19
-                    }
-                  />
-
-                </span>
-
-                <div>
-
-                  <div className="text-sm font-semibold">
-                    Abrir mídia
-                  </div>
-
-                  <div className="text-xs text-gray-500">
-                    Abrir a imagem ou vídeo original
-                  </div>
-
-                </div>
-
-              </button>
-
-              {/* CANCELAR */}
-
-              <button
-                type="button"
-                onClick={
-                  closeShare
-                }
-                className="mt-2 flex w-full items-center justify-center rounded-[4px] bg-gray-100 px-4 py-4 text-sm font-semibold"
-              >
-                Cancelar
-              </button>
-
-            </div>
-
-          </div>
-
-        </div>
-
-      )}
-
+        )}
     </main>
   )
 }
