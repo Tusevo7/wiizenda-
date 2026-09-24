@@ -1,4 +1,3 @@
-
 import { createClient } from '@/lib/supabase/server'
 import AdminDashboardClient from '@/app/components/admin-dashboard-client'
 
@@ -304,7 +303,8 @@ export default async function AdminPage() {
   // PROVÍNCIAS
   // =========================================================
 
-  const { data: provincias } = await supabase
+ const { data: provincias, error: provinciasError } =
+  await supabase
     .from('provincias')
     .select(`
       id,
@@ -312,6 +312,7 @@ export default async function AdminPage() {
       slug,
       descricao,
       imagem,
+      imagem_capa,
       publicada,
       created_at,
       updated_at
@@ -319,6 +320,9 @@ export default async function AdminPage() {
     .order('created_at', {
       ascending: false,
     })
+
+console.log('PROVINCIAS:', provincias)
+console.log('ERRO PROVINCIAS:', provinciasError)
 
   // =========================================================
   // ATIVIDADES RECENTES
@@ -360,6 +364,54 @@ export default async function AdminPage() {
     )
 
   // =========================================================
+  // CONVERSAS
+  // =========================================================
+
+  const { data: conversations } =
+    await supabase
+      .from('conversations')
+      .select(`
+        id,
+        user_id,
+        agency_id,
+        experience_id,
+        created_at,
+        updated_at,
+        customer_name,
+        customer_phone
+      `)
+      .order('updated_at', {
+        ascending: false,
+      })
+      .limit(100)
+
+  const conversationIds =
+    (conversations || []).map(
+      (conversation) => conversation.id,
+    )
+
+  const { data: conversationMessages } =
+    conversationIds.length > 0
+      ? await supabase
+          .from('messages')
+          .select(`
+            id,
+            conversation_id,
+            sender_id,
+            message,
+            read,
+            created_at
+          `)
+          .in(
+            'conversation_id',
+            conversationIds,
+          )
+          .order('created_at', {
+            ascending: true,
+          })
+      : { data: [] }
+
+  // =========================================================
   // DASHBOARD
   // =========================================================
 
@@ -392,6 +444,10 @@ export default async function AdminPage() {
       agencies={agencies || []}
       experiences={experiences || []}
       provincias={provincias || []}
+      conversations={conversations || []}
+      conversationMessages={
+        conversationMessages || []
+      }
     />
   )
 }

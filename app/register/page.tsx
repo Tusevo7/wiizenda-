@@ -3,7 +3,6 @@
 
 import Link from 'next/link'
 import {
-  ArrowLeft,
   ArrowRight,
   Building2,
   CheckCircle2,
@@ -20,7 +19,7 @@ import { FormEvent, ReactNode, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 type RegisterMode = 'traveler' | 'agency'
-type RegisterStep = 'form' | 'otp' | 'success'
+type RegisterStep = 'form' | 'success'
 
 type DocumentType =
   | 'responsible_id'
@@ -78,13 +77,6 @@ export default function RegisterPage() {
   const [showConfirmPassword, setShowConfirmPassword] =
     useState(false)
 
-  // OTP
-  const [otp, setOtp] = useState('')
-  const [otpSent, setOtpSent] = useState(false)
-  const [otpVerified, setOtpVerified] = useState(false)
-
-  const [registrationPhone, setRegistrationPhone] =
-    useState('')
 
   const [loading, setLoading] = useState(false)
   const [resending, setResending] = useState(false)
@@ -150,72 +142,6 @@ export default function RegisterPage() {
     return null
   }
 
-  async function sendOtp() {
-    const phoneNumber =
-      mode === 'agency'
-        ? agencyPhone.trim()
-        : phone.trim()
-
-    if (!phoneNumber) {
-      setMessageType('error')
-      setMessage('Introduz o teu número de telefone.')
-      return false
-    }
-
-    setLoading(true)
-    setMessage('')
-
-    try {
-      const response = await fetch('/api/otp/send', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          phone: phoneNumber,
-        }),
-      })
-
-      const result = await response.json()
-
-      if (!response.ok || !result.success) {
-        setMessageType('error')
-        setMessage(
-          result.message ||
-            'Não foi possível enviar o código por SMS.',
-        )
-
-        setLoading(false)
-        return false
-      }
-
-      setRegistrationPhone(phoneNumber)
-      setOtp('')
-      setOtpSent(true)
-      setStep('otp')
-
-      setMessageType('success')
-      setMessage(
-        'Enviámos um código de verificação por SMS.',
-      )
-
-      setLoading(false)
-
-      return true
-    } catch (error) {
-      console.error('Erro ao enviar OTP:', error)
-
-      setMessageType('error')
-      setMessage(
-        'Não foi possível enviar o código. Tenta novamente.',
-      )
-
-      setLoading(false)
-
-      return false
-    }
-  }
-
   async function handleRegister(
     event: FormEvent<HTMLFormElement>,
   ) {
@@ -254,70 +180,8 @@ export default function RegisterPage() {
       return
     }
 
-    // Primeiro verificamos o telefone.
-    await sendOtp()
-  }
-
-  async function handleVerifyOtp(
-    event: FormEvent<HTMLFormElement>,
-  ) {
-    event.preventDefault()
-
-    const cleanOtp =
-      otp.replace(/\D/g, '')
-
-    if (cleanOtp.length !== 6) {
-      setMessageType('error')
-      setMessage(
-        'Introduz o código de 6 dígitos recebido por SMS.',
-      )
-      return
-    }
-
     setLoading(true)
-    setMessage('')
-
-    try {
-      const response = await fetch('/api/otp/verify', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          phone: registrationPhone,
-          code: cleanOtp,
-        }),
-      })
-
-      const result = await response.json()
-
-      if (!response.ok || !result.success) {
-        setMessageType('error')
-        setMessage(
-          result.message ||
-            'O código está incorreto ou expirou.',
-        )
-
-        setLoading(false)
-        return
-      }
-
-      setOtpVerified(true)
-
-      await createAccount()
-    } catch (error) {
-      console.error(
-        'Erro ao verificar OTP:',
-        error,
-      )
-
-      setMessageType('error')
-      setMessage(
-        'Não foi possível verificar o código.',
-      )
-
-      setLoading(false)
-    }
+    await createAccount()
   }
 
   async function createAccount() {
@@ -346,7 +210,7 @@ export default function RegisterPage() {
                 registrationName,
 
               phone:
-                registrationPhone,
+                (mode === 'agency' ? agencyPhone.trim() : phone.trim()),
 
               city:
                 mode === 'agency'
@@ -416,12 +280,6 @@ export default function RegisterPage() {
         return
       }
 
-      /*
-       * O OTP da TelcoSMS já confirmou
-       * o telefone.
-       *
-       * Agora concluímos o registo.
-       */
       await finishRegistration(
         data.user.id,
       )
@@ -457,7 +315,7 @@ export default function RegisterPage() {
               fullName.trim(),
 
             phone:
-              registrationPhone.trim(),
+              phone.trim(),
 
             city:
               city.trim(),
@@ -487,7 +345,7 @@ export default function RegisterPage() {
 
       setMessageType('success')
       setMessage(
-        'Conta criada e telefone confirmado com sucesso.',
+        'Conta criada com sucesso.',
       )
 
       setStep('success')
@@ -508,7 +366,7 @@ export default function RegisterPage() {
             responsibleName.trim(),
 
           phone:
-            registrationPhone.trim(),
+            agencyPhone.trim(),
 
           city:
             agencyCity.trim(),
@@ -584,7 +442,7 @@ export default function RegisterPage() {
           responsibleName.trim(),
 
         phone:
-          registrationPhone.trim(),
+          agencyPhone.trim(),
 
         email:
           agencyEmail.trim(),
@@ -781,67 +639,6 @@ export default function RegisterPage() {
     setLoading(false)
   }
 
-  async function resendOtp() {
-    if (!registrationPhone) return
-
-    setResending(true)
-    setMessage('')
-
-    try {
-      const response =
-        await fetch('/api/otp/send', {
-          method: 'POST',
-          headers: {
-            'Content-Type':
-              'application/json',
-          },
-          body: JSON.stringify({
-            phone:
-              registrationPhone,
-          }),
-        })
-
-      const result =
-        await response.json()
-
-      if (!response.ok || !result.success) {
-        setMessageType('error')
-        setMessage(
-          result.message ||
-            'Não foi possível reenviar o código.',
-        )
-
-        setResending(false)
-        return
-      }
-
-      setOtp('')
-
-      setMessageType('success')
-      setMessage(
-        'Novo código enviado por SMS.',
-      )
-    } catch (error) {
-      console.error(
-        'Erro ao reenviar OTP:',
-        error,
-      )
-
-      setMessageType('error')
-      setMessage(
-        'Não foi possível reenviar o código.',
-      )
-    }
-
-    setResending(false)
-  }
-
-  function backToForm() {
-    setStep('form')
-    setOtp('')
-    setMessage('')
-  }
-
   return (
     <main className="min-h-screen bg-white">
       <div className="grid min-h-screen lg:grid-cols-[minmax(420px,0.9fr)_minmax(600px,1.1fr)]">
@@ -965,18 +762,14 @@ export default function RegisterPage() {
             <div>
 
               <p className="text-sm font-bold text-orange-500">
-                {step === 'otp'
-                  ? 'Verificação por SMS'
-                  : step === 'success'
+                {step === 'success'
                     ? 'Tudo pronto'
                     : 'Criar conta'}
               </p>
 
               <h2 className="mt-2 text-3xl font-black tracking-tight text-gray-950 sm:text-4xl">
 
-                {step === 'otp'
-                  ? 'Confirma o teu telefone'
-                  : step === 'success'
+                {step === 'success'
                     ? 'Conta criada'
                     : 'Junta-te à Wizenda'}
 
@@ -984,9 +777,7 @@ export default function RegisterPage() {
 
               <p className="mt-2 max-w-xl text-sm leading-6 text-gray-500">
 
-                {step === 'otp'
-                  ? `Introduz o código de 6 dígitos enviado para ${registrationPhone}.`
-                  : step === 'success'
+                {step === 'success'
                     ? mode === 'agency'
                       ? 'O teu registo foi enviado para análise.'
                       : 'A tua conta está pronta para começar.'
@@ -995,139 +786,6 @@ export default function RegisterPage() {
               </p>
 
             </div>
-
-            {/* =================================================
-                OTP
-            ================================================== */}
-
-            {step === 'otp' && (
-              <div className="mt-8">
-
-                <form
-                  onSubmit={
-                    handleVerifyOtp
-                  }
-                  className="space-y-5"
-                >
-
-                  <div className="rounded-3xl border border-gray-100 bg-white p-6 shadow-[0_10px_40px_rgba(0,0,0,0.05)] sm:p-8">
-
-                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50 text-orange-500">
-                      <ShieldCheck size={28} />
-                    </div>
-
-                    <div className="mt-5 text-center">
-
-                      <h3 className="text-lg font-black text-gray-950">
-                        Código de segurança
-                      </h3>
-
-                      <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-gray-500">
-                        Enviámos um código de
-                        verificação para o teu
-                        número de telefone.
-                      </p>
-
-                    </div>
-
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      maxLength={6}
-                      placeholder="000000"
-                      value={otp}
-                      autoFocus
-                      onChange={(e) =>
-                        setOtp(
-                          e.target.value
-                            .replace(
-                              /\D/g,
-                              '',
-                            )
-                            .slice(
-                              0,
-                              6,
-                            ),
-                        )
-                      }
-                      className="mt-7 h-16 w-full rounded-2xl border border-gray-200 bg-gray-50 text-center text-3xl font-black tracking-[0.45em] text-gray-950 outline-none transition focus:border-orange-500 focus:bg-white focus:ring-4 focus:ring-orange-50"
-                    />
-
-                  </div>
-
-                  {message && (
-                    <MessageBox
-                      type={messageType}
-                      message={message}
-                    />
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={
-                      loading ||
-                      otp.length !== 6
-                    }
-                    className="flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-orange-500 px-5 text-sm font-black text-white shadow-lg shadow-orange-500/20 transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-
-                    {loading ? (
-                      <>
-                        <Loader2
-                          size={18}
-                          className="animate-spin"
-                        />
-
-                        A verificar...
-                      </>
-                    ) : (
-                      <>
-                        Confirmar telefone
-
-                        <ArrowRight size={18} />
-                      </>
-                    )}
-
-                  </button>
-
-                </form>
-
-                <div className="mt-6 flex flex-col items-center gap-4 text-center">
-
-                  <button
-                    type="button"
-                    onClick={
-                      resendOtp
-                    }
-                    disabled={
-                      resending
-                    }
-                    className="text-sm font-black text-orange-500 transition hover:text-orange-600 disabled:opacity-50"
-                  >
-                    {resending
-                      ? 'A reenviar...'
-                      : 'Reenviar código'}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={
-                      backToForm
-                    }
-                    className="inline-flex items-center gap-2 text-sm font-semibold text-gray-500 transition hover:text-gray-900"
-                  >
-
-                    <ArrowLeft size={15} />
-
-                    Voltar ao registo
-
-                  </button>
-
-                </div>
-
-              </div>
-            )}
 
             {/* =================================================
                 SUCESSO
@@ -1151,7 +809,7 @@ export default function RegisterPage() {
                   <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-gray-500">
                     {mode === 'agency'
                       ? 'Os teus documentos foram recebidos. A agência ficará em análise até a equipa Wizenda concluir a verificação.'
-                      : 'O teu telefone foi confirmado e a tua conta está pronta para começar.'}
+                      : 'A tua conta está pronta para começar. Pode ser necessário confirmar o teu e-mail antes de entrar.'}
                   </p>
 
                   {mode === 'agency' && (
@@ -1165,11 +823,7 @@ export default function RegisterPage() {
                         />
 
                         <p className="text-xs leading-5 text-gray-600">
-                          A confirmação do telefone
-                          não significa aprovação da
-                          agência. A equipa Wizenda
-                          irá analisar os documentos
-                          enviados.
+                          O envio dos documentos não significa aprovação da agência. A equipa Wizenda irá analisar os documentos enviados.
                         </p>
 
                       </div>
@@ -1409,7 +1063,7 @@ export default function RegisterPage() {
                       loading={
                         loading
                       }
-                      text="Continuar e verificar telefone"
+                      text="Criar conta"
                     />
 
                   </form>
@@ -1687,10 +1341,8 @@ export default function RegisterPage() {
                         />
 
                         <p className="text-xs leading-5 text-gray-500">
-                          Primeiro confirmamos o
-                          telefone por SMS. Depois,
-                          a equipa Wizenda analisa
-                          os documentos da agência.
+                          O registo será criado e os documentos ficarão
+                          privados até a equipa Wizenda concluir a análise.
                         </p>
 
                       </div>
@@ -1712,7 +1364,7 @@ export default function RegisterPage() {
                       loading={
                         loading
                       }
-                      text="Continuar e verificar telefone"
+                      text="Enviar registo"
                     />
 
                   </form>

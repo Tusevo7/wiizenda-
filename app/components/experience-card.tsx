@@ -101,7 +101,11 @@ export default function ExperienceCard({
   const globalSoundRef =
     useRef(true)
 
-  const hasMusic =
+  const wasPlayingBeforeHiddenRef = useRef(false)
+
+const wasManuallyPausedRef = useRef(false)
+  
+const hasMusic =
     typeof musicUrl === 'string' &&
     musicUrl.trim().length > 0
 
@@ -867,61 +871,34 @@ export default function ExperienceCard({
    * BOTÃO DO SOM
    */
   async function toggleSound(
-    event: React.MouseEvent<HTMLButtonElement>,
+  event: React.MouseEvent<HTMLButtonElement>,
+) {
+  event.preventDefault()
+  event.stopPropagation()
+
+  if (
+    !hasMusic ||
+    !musicUrl
   ) {
-    event.preventDefault()
-    event.stopPropagation()
+    return
+  }
 
-    if (
-      !hasMusic ||
-      !musicUrl
-    ) {
-      return
-    }
+  /*
+   * DESLIGAR SOM GLOBALMENTE
+   */
+  if (
+    globalSoundRef.current
+  ) {
+    globalSoundRef.current = false
 
-    /*
-     * Desligar som globalmente
-     */
-    if (
-      globalSoundRef.current
-    ) {
-      globalSoundRef.current =
-        false
+    wasManuallyPausedRef.current = true
 
-      setGlobalSoundOn(false)
-      setSoundOn(false)
-
-      window.localStorage.setItem(
-        GLOBAL_SOUND_STORAGE_KEY,
-        'false',
-      )
-
-      window.dispatchEvent(
-        new CustomEvent(
-          GLOBAL_SOUND_EVENT_NAME,
-          {
-            detail: {
-              enabled: false,
-            },
-          },
-        ),
-      )
-
-      return
-    }
-
-    /*
-     * Ligar som globalmente
-     */
-    globalSoundRef.current =
-      true
-
-    setGlobalSoundOn(true)
-    setSoundOn(true)
+    setGlobalSoundOn(false)
+    setSoundOn(false)
 
     window.localStorage.setItem(
       GLOBAL_SOUND_STORAGE_KEY,
-      'true',
+      'false',
     )
 
     window.dispatchEvent(
@@ -929,52 +906,104 @@ export default function ExperienceCard({
         GLOBAL_SOUND_EVENT_NAME,
         {
           detail: {
-            enabled: true,
+            enabled: false,
           },
         },
       ),
     )
 
-    if (
-      isVisibleRef.current
-    ) {
-      await startMusic(true)
-    }
+    return
   }
 
   /*
-   * QUANDO OUTRO CARD COMEÇA
+   * LIGAR SOM GLOBALMENTE
    */
-  useEffect(() => {
-    function handleOtherAudio(
-      event: Event,
-    ) {
-      const customEvent =
-        event as AudioPlayEvent
+  globalSoundRef.current = true
 
-      if (
-        customEvent.detail?.id ===
-        id
-      ) {
-        return
+  wasManuallyPausedRef.current = false
+
+  setGlobalSoundOn(true)
+  setSoundOn(true)
+
+  window.localStorage.setItem(
+    GLOBAL_SOUND_STORAGE_KEY,
+    'true',
+  )
+
+  window.dispatchEvent(
+    new CustomEvent(
+      GLOBAL_SOUND_EVENT_NAME,
+      {
+        detail: {
+          enabled: true,
+        },
+      },
+    ),
+  )
+
+  if (
+    isVisibleRef.current
+  ) {
+    await startMusic(true)
+  }
+}
+
+/*
+ * BLOQUEIO / DESBLOQUEIO DO TELEMÓVEL
+ *
+ * Quando o utilizador bloqueia o telefone:
+ * - pausa a música
+ * - mantém o currentTime
+ *
+ * Quando desbloqueia:
+ * - continua exactamente de onde parou
+ */
+useEffect(() => {
+  function handleVisibilityChange() {
+    const audio = audioRef.current
+
+    if (!audio) {
+      return
+    }
+
+    if (
+      document.visibilityState === 'hidden'
+    ) {
+      wasPlayingBeforeHiddenRef.current =
+        !audio.paused
+
+      if (!audio.paused) {
+        audio.pause()
       }
 
-      stopMusic(true)
+      return
     }
 
-    window.addEventListener(
-      AUDIO_EVENT_NAME,
-      handleOtherAudio,
+    if (
+      document.visibilityState === 'visible' &&
+      wasPlayingBeforeHiddenRef.current &&
+      !wasManuallyPausedRef.current &&
+      isVisibleRef.current &&
+      globalSoundRef.current
+    ) {
+      void audio.play().catch(() => {})
+    }
+
+    wasPlayingBeforeHiddenRef.current = false
+  }
+
+  document.addEventListener(
+    'visibilitychange',
+    handleVisibilityChange,
+  )
+
+  return () => {
+    document.removeEventListener(
+      'visibilitychange',
+      handleVisibilityChange,
     )
-
-    return () => {
-      window.removeEventListener(
-        AUDIO_EVENT_NAME,
-        handleOtherAudio,
-      )
-    }
-  }, [id])
-
+  }
+}, [])
   /*
    * AUTOPLAY COM INTERSECTION OBSERVER
    */

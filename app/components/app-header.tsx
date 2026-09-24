@@ -1,4 +1,3 @@
-
 'use client'
 
 import Link from 'next/link'
@@ -8,6 +7,7 @@ import {
   CircleHelp,
   Heart,
   Hotel,
+  LogOut,
   MapPin,
   Menu,
   MessageCircle,
@@ -61,6 +61,16 @@ export default function AppHeader() {
 
   function closeMenu() {
     setMenuOpen(false)
+  }
+
+  async function handleLogout() {
+    const supabase = createClient()
+
+    await supabase.auth.signOut()
+
+    setMenuOpen(false)
+
+    window.location.href = '/login'
   }
 
   return (
@@ -350,9 +360,21 @@ export default function AppHeader() {
 
           {/* RODAPÉ */}
           <div className="border-t border-gray-100 px-5 py-4">
-            <p className="text-center text-xs text-gray-400">
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+            >
+              <LogOut size={18} />
+
+              Terminar sessão
+            </button>
+
+            <p className="mt-3 text-center text-xs text-gray-400">
               Wizenda · Descobre Angola
             </p>
+
           </div>
 
         </div>

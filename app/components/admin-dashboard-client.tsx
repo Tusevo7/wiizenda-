@@ -11,20 +11,34 @@ import {
   LayoutDashboard,
   LockKeyhole,
   Medal,
+  LogOut,
   Music,
   MapPin,
   RotateCcw,
   Settings,
   ShieldCheck,
-  Trash2,
   TrendingUp,
   UserCog,
+  MessageCircle,
   Users,
   XCircle,
+  Megaphone,
+  Plus,
+  Pencil,
+  Trash2,
+  Eye,
+  EyeOff,
+  X,
+  Save,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import AdminAdvertisementsSection from '@/app/components/admin-advertisements-section'
 
 type MenuKey =
   | 'overview'
@@ -34,12 +48,14 @@ type MenuKey =
   | 'content'
   | 'music'
   | 'bookings'
+  | 'conversations'
   | 'points'
   | 'notifications'
   | 'security'
   | 'reports'
   | 'admins'
   | 'settings'
+  | 'advertisements'
 
 type StatIcon = typeof Users
 
@@ -125,6 +141,25 @@ type AdminProvince = {
   created_at: string
   updated_at: string
 }
+type AdminConversation = {
+  id: string
+  user_id: string
+  agency_id: string
+  experience_id: string | null
+  created_at: string
+  updated_at: string
+  customer_name: string | null
+  customer_phone: string | null
+}
+
+type AdminConversationMessage = {
+  id: string
+  conversation_id: string
+  sender_id: string
+  message: string
+  read: boolean
+  created_at: string
+}
 type MusicTrack = {
   id: string
   title: string
@@ -179,6 +214,10 @@ type DashboardProps = {
   experiences?: AdminExperience[]
 
   provincias?: AdminProvince[]
+
+    conversations?: AdminConversation[]
+
+  conversationMessages?: AdminConversationMessage[]
 }
 
 const menuSections = [
@@ -200,6 +239,11 @@ const menuSections = [
         label: 'Usuários',
         icon: Users,
       },
+      {
+  key: 'advertisements' as MenuKey,
+  label: 'Publicidade',
+  icon: Megaphone,
+},
       {
         key: 'companies' as MenuKey,
         label: 'Empresas',
@@ -224,6 +268,13 @@ const menuSections = [
         key: 'bookings' as MenuKey,
         label: 'Reservas',
         icon: CalendarCheck,
+      },
+
+      
+       {
+        key: 'conversations' as MenuKey,
+        label: 'Conversas',
+        icon: MessageCircle,
       },
       {
         key: 'points' as MenuKey,
@@ -2341,11 +2392,1257 @@ function MusicSection() {
     </section>
   )
 }
+
+function ConversationsSection({
+  conversations,
+  messages,
+  users = [],
+  agencies = [],
+  experiences = [],
+  selectedConversationId,
+  onSelectConversation,
+}: {
+  conversations: AdminConversation[]
+  messages: AdminConversationMessage[]
+  users?: AdminUser[]
+  agencies?: AdminAgency[]
+  experiences?: AdminExperience[]
+  selectedConversationId: string | null
+  onSelectConversation: (
+    id: string,
+  ) => void
+}) {
+      const messagesEndRef =
+    useRef<HTMLDivElement | null>(null)
+
+  const selectedConversation =
+    conversations.find(
+      (conversation) =>
+        conversation.id ===
+        selectedConversationId,
+    ) || null
+
+  const [conversationSearch, setConversationSearch] =
+    useState('')
+
+
+  const selectedMessages =
+    selectedConversation
+      ? messages.filter(
+          (message) =>
+            message.conversation_id ===
+            selectedConversation.id,
+        )
+      : []
+
+        useEffect(() => {
+    if (!selectedConversationId) return
+
+    messagesEndRef.current?.scrollIntoView({
+      behavior: 'smooth',
+    })
+  }, [
+    selectedConversationId,
+    selectedMessages.length,
+  ])
+
+        const filteredConversations =
+    conversations.filter((conversation) => {
+      const search =
+        conversationSearch
+          .trim()
+          .toLowerCase()
+
+      if (!search) return true
+
+      const userName =
+        users.find(
+          (user) =>
+            user.id ===
+            conversation.user_id,
+        )?.full_name || ''
+
+      const agencyName =
+        agencies.find(
+          (agency) =>
+            agency.id ===
+            conversation.agency_id,
+        )?.name || ''
+
+      const customerName =
+        conversation.customer_name || ''
+
+      return [
+        userName,
+        agencyName,
+        customerName,
+      ].some((name) =>
+        name
+          .toLowerCase()
+          .includes(search),
+      )
+    })
+
+  function getUserName(
+    userId: string,
+  ) {
+    const user = users.find(
+      (item) => item.id === userId,
+    )
+
+    return (
+      user?.full_name ||
+      'Utilizador'
+    )
+  }
+
+  function getAgencyName(
+    agencyId: string,
+  ) {
+    const agency = agencies.find(
+      (item) => item.id === agencyId,
+    )
+
+    return (
+      agency?.name ||
+      'Agência'
+    )
+  }
+
+  function getExperienceTitle(
+    experienceId: string | null,
+  ) {
+    if (!experienceId) {
+      return null
+    }
+
+    const experience =
+      experiences.find(
+        (item) =>
+          item.id === experienceId,
+      )
+
+    return (
+      experience?.title || null
+    )
+  }
+
+  function getSenderName(
+    message: AdminConversationMessage,
+  ) {
+    if (
+      selectedConversation &&
+      message.sender_id ===
+        selectedConversation.user_id
+    ) {
+      return getUserName(
+        selectedConversation.user_id,
+      )
+    }
+
+    if (
+      selectedConversation &&
+      message.sender_id
+    ) {
+      const agency = agencies.find(
+        (item) =>
+          item.id ===
+            selectedConversation.agency_id &&
+          item.owner_id ===
+            message.sender_id,
+      )
+
+      if (agency) {
+        return agency.name
+      }
+    }
+
+    return 'Participante'
+  }
+
+  function getLastMessage(
+    conversationId: string,
+  ) {
+    const conversationMessages =
+      messages.filter(
+        (message) =>
+          message.conversation_id ===
+          conversationId,
+      )
+
+    if (
+      conversationMessages.length === 0
+    ) {
+      return 'Nenhuma mensagem ainda'
+    }
+
+    return conversationMessages[
+      conversationMessages.length - 1
+    ].message
+  }
+
+  function getUnreadCount(
+    conversationId: string,
+  ) {
+    return messages.filter(
+      (message) =>
+        message.conversation_id ===
+          conversationId &&
+        !message.read,
+    ).length
+  }
+
+  return (
+    <div className="mx-auto max-w-[1500px]">
+      <div className="mb-7">
+        <h2 className="text-2xl font-black tracking-tight text-gray-950">
+          Conversas
+        </h2>
+      
+        <p className="mt-1 text-sm text-gray-500">
+          Consulte as conversas entre clientes e agências.
+        </p>
+        <input
+  type="text"
+  value={conversationSearch}
+  onChange={(event) =>
+    setConversationSearch(
+      event.target.value,
+    )
+  }
+  placeholder="Pesquisar por nome..."
+  className="mb-4 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none transition focus:border-orange-400 focus:bg-white"
+/>
+      </div>
+
+      <div className="grid min-h-[650px] overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:grid-cols-[380px_1fr]">
+        {/* LISTA DE CONVERSAS */}
+
+        <div className="border-b border-gray-100 lg:border-b-0 lg:border-r">
+          <div className="border-b border-gray-100 px-5 py-4">
+            <p className="text-sm font-bold text-gray-950">
+              Conversas
+            </p>
+
+            <p className="mt-1 text-xs text-gray-400">
+            {filteredConversations.length}{' '}
+conversa
+{filteredConversations.length === 1
+  ? ''
+  : 's'}
+            </p>
+          </div>
+
+          <div className="max-h-[580px] overflow-y-auto">
+            {conversations.length === 0 ? (
+              <div className="flex min-h-[300px] items-center justify-center px-6 text-center">
+                <div>
+                  <MessageCircle
+                    size={30}
+                    className="mx-auto text-gray-300"
+                  />
+
+                  <p className="mt-3 text-sm font-semibold text-gray-700">
+                    Nenhuma conversa
+                  </p>
+
+                  <p className="mt-1 text-xs text-gray-400">
+                    Ainda não existem conversas para apresentar.
+                  </p>
+                </div>
+              </div>
+            ) : (
+             filteredConversations.map(
+                (conversation) => {
+                  const active =
+                    conversation.id ===
+                    selectedConversationId
+
+                  const unread =
+                    getUnreadCount(
+                      conversation.id,
+                    )
+
+                  const displayName =
+                    conversation.customer_name ||
+                    getUserName(
+                      conversation.user_id,
+                    )
+
+                  return (
+                    <button
+                      key={
+                        conversation.id
+                      }
+                      type="button"
+                      onClick={() =>
+                        onSelectConversation(
+                          conversation.id,
+                        )
+                      }
+                      className={`w-full border-b border-gray-100 px-5 py-4 text-left transition ${
+                        active
+                          ? 'bg-orange-50'
+                          : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-500">
+                          <Users
+                            size={17}
+                          />
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-3">
+                            <p className="truncate text-sm font-bold text-gray-950">
+                              {displayName}
+                            </p>
+
+                            {unread >
+                              0 && (
+                              <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-orange-500 px-1.5 text-[10px] font-bold text-white">
+                                {unread}
+                              </span>
+                            )}
+                          </div>
+
+                          <p className="mt-0.5 truncate text-xs text-gray-500">
+                            {getAgencyName(
+                              conversation.agency_id,
+                            )}
+                          </p>
+
+                          {getExperienceTitle(
+                            conversation.experience_id,
+                          ) && (
+                            <p className="mt-1 truncate text-[11px] font-medium text-gray-400">
+                              {
+                                getExperienceTitle(
+                                  conversation.experience_id,
+                                )
+                              }
+                            </p>
+                          )}
+
+                          <p className="mt-2 truncate text-xs text-gray-400">
+                            {getLastMessage(
+                              conversation.id,
+                            )}
+                          </p>
+
+                          <p className="mt-1 text-[10px] text-gray-300">
+                            {formatDate(
+                              conversation.updated_at,
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+                  )
+                },
+              )
+            )}
+          </div>
+        </div>
+
+        {/* MENSAGENS */}
+
+        <div className="flex min-h-[650px] flex-col">
+          {!selectedConversation ? (
+            <div className="flex flex-1 items-center justify-center px-6 text-center">
+              <div>
+                <MessageCircle
+                  size={40}
+                  className="mx-auto text-gray-200"
+                />
+
+                <p className="mt-4 text-sm font-semibold text-gray-700">
+                  Selecione uma conversa
+                </p>
+
+                <p className="mt-1 text-xs text-gray-400">
+                  Escolha uma conversa à esquerda para visualizar as mensagens.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="border-b border-gray-100 px-6 py-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-base font-black text-gray-950">
+                      {selectedConversation.customer_name ||
+                        getUserName(
+                          selectedConversation.user_id,
+                        )}
+                    </p>
+
+                    <p className="mt-1 text-xs text-gray-500">
+                      {
+                        getAgencyName(
+                          selectedConversation.agency_id,
+                        )
+                      }
+                    </p>
+
+                    {getExperienceTitle(
+                      selectedConversation.experience_id,
+                    ) && (
+                      <p className="mt-1 text-xs text-orange-500">
+                        {
+                          getExperienceTitle(
+                            selectedConversation.experience_id,
+                          )
+                        }
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="text-right">
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">
+                      Criada em
+                    </p>
+
+                    <p className="mt-1 text-xs font-semibold text-gray-600">
+                      {formatDate(
+                        selectedConversation.created_at,
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="h-[500px] space-y-4 overflow-y-auto bg-gray-50/60 p-5">
+                {selectedMessages.length ===
+                0 ? (
+                  <div className="flex h-full min-h-[400px] items-center justify-center text-center">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700">
+                        Nenhuma mensagem
+                      </p>
+
+                      <p className="mt-1 text-xs text-gray-400">
+                        Esta conversa ainda não possui mensagens.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  selectedMessages.map(
+                    (message) => {
+                      const isUser =
+                        message.sender_id ===
+                        selectedConversation.user_id
+                        
+
+                      return (
+                        <div
+                          key={message.id}
+                          className={`flex ${
+                            isUser
+                              ? 'justify-start'
+                              : 'justify-end'
+                          }`}
+                        ><div ref={messagesEndRef} />
+                          <div
+                            className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+                              isUser
+                                ? 'rounded-bl-md bg-white shadow-sm ring-1 ring-gray-100'
+                                : 'rounded-br-md bg-orange-500 text-white'
+                            }`}
+                          >
+                            <p
+                              className={`mb-1 text-[10px] font-bold ${
+                                isUser
+                                  ? 'text-gray-400'
+                                  : 'text-orange-100'
+                              }`}
+                            >
+                              {getSenderName(
+                                message,
+                              )}
+                            </p>
+
+                            <p
+                              className={`whitespace-pre-wrap break-words text-sm leading-6 ${
+                                isUser
+                                  ? 'text-gray-700'
+                                  : 'text-white'
+                              }`}
+                            >
+                              {
+                                message.message
+                              }
+                            </p>
+
+                            <p
+                              className={`mt-2 text-[10px] ${
+                                isUser
+                                  ? 'text-gray-300'
+                                  : 'text-orange-100'
+                              }`}
+                            >
+                              {formatDate(
+                                message.created_at,
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    },
+                  )
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
 function ProvinciasSection({
   provincias,
 }: {
   provincias: AdminProvince[]
 }) {
+  const supabase = createClient()
+  const router = useRouter()
+
+  const [modalAberto, setModalAberto] = useState(false)
+  const [editandoId, setEditandoId] = useState<string | null>(null)
+  const [salvando, setSalvando] = useState(false)
+  const [apagandoId, setApagandoId] = useState<string | null>(null)
+  const [apagandoImagemId, setApagandoImagemId] =
+  useState<string | null>(null)
+
+  // IMAGEM DE CAPA
+  const [imagemCapaArquivo, setImagemCapaArquivo] =
+    useState<File | null>(null)
+
+  const [previewImagemCapa, setPreviewImagemCapa] =
+    useState<string | null>(null)
+
+  // IMAGENS DA GALERIA DA PÁGINA
+  const [imagensArquivos, setImagensArquivos] =
+    useState<File[]>([])
+
+  const [previewsImagens, setPreviewsImagens] = useState<
+    {
+      id: string | null
+      url: string
+      nova: boolean
+    }[]
+  >([])
+
+  const [form, setForm] = useState({
+    nome: '',
+    slug: '',
+    descricao: '',
+    imagem_capa: '',
+    imagem: '',
+    publicada: true,
+  })
+
+  function gerarSlug(nome: string) {
+    return nome
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+  }
+
+  function abrirAdicionar() {
+    setEditandoId(null)
+
+    setImagemCapaArquivo(null)
+    setPreviewImagemCapa(null)
+
+    setImagensArquivos([])
+    setPreviewsImagens([])
+
+    setForm({
+      nome: '',
+      slug: '',
+      descricao: '',
+      imagem_capa: '',
+      imagem: '',
+      publicada: true,
+    })
+
+    setModalAberto(true)
+  }
+
+  async function abrirEditar(provincia: AdminProvince) {
+    setEditandoId(provincia.id)
+
+    setImagemCapaArquivo(null)
+    setPreviewImagemCapa(provincia.imagem_capa || null)
+
+    setImagensArquivos([])
+    setPreviewsImagens([])
+
+    setForm({
+      nome: provincia.nome,
+      slug: provincia.slug,
+      descricao: provincia.descricao || '',
+      imagem_capa: provincia.imagem_capa || '',
+      imagem: provincia.imagem || '',
+      publicada: provincia.publicada,
+    })
+
+    // CARREGAR IMAGENS EXISTENTES DA GALERIA
+    const {
+      data: imagensGaleria,
+      error: galeriaError,
+    } = await supabase
+      .from('provincia_imagens')
+      .select('id, imagem, ordem')
+      .eq('provincia_id', provincia.id)
+      .order('ordem', { ascending: true })
+
+    if (galeriaError) {
+      console.error(galeriaError)
+
+      alert(
+        `Erro ao carregar as fotos da galeria: ${galeriaError.message}`,
+      )
+
+      return
+    }
+
+    setPreviewsImagens(
+      (imagensGaleria || []).map((imagem) => ({
+        id: imagem.id,
+        url: imagem.imagem,
+        nova: false,
+      })),
+    )
+
+    setModalAberto(true)
+  }
+
+  async function eliminarProvincia(
+    provincia: AdminProvince,
+  ) {
+    const confirmar = window.confirm(
+      `Tem certeza que deseja eliminar a província "${provincia.nome}"?`,
+    )
+
+    if (!confirmar) return
+
+    setApagandoId(provincia.id)
+
+    try {
+      const { error } = await supabase
+        .from('provincias')
+        .delete()
+        .eq('id', provincia.id)
+
+      if (error) {
+        console.error(error)
+
+        alert(
+          `Erro ao eliminar a província: ${error.message}`,
+        )
+
+        return
+      }
+
+      router.refresh()
+    } finally {
+      setApagandoId(null)
+    }
+  }
+
+  function fecharModal() {
+    if (salvando) return
+
+    setModalAberto(false)
+    setEditandoId(null)
+
+    setImagemCapaArquivo(null)
+    setPreviewImagemCapa(null)
+
+    setImagensArquivos([])
+    setPreviewsImagens([])
+  }
+
+  async function alternarPublicacao(
+    provincia: AdminProvince,
+  ) {
+    const { error } = await supabase
+      .from('provincias')
+      .update({
+        publicada: !provincia.publicada,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', provincia.id)
+
+    if (error) {
+      console.error(error)
+
+      alert(
+        `Erro ao atualizar publicação: ${error.message}`,
+      )
+
+      return
+    }
+
+    router.refresh()
+  }
+
+  function validarImagem(file: File | null) {
+    if (!file) return false
+
+    if (!file.type.startsWith('image/')) {
+      alert('Selecione um ficheiro de imagem válido.')
+      return false
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert('A imagem não pode ultrapassar 5 MB.')
+      return false
+    }
+
+    return true
+  }
+
+  function selecionarImagemCapa(file: File | null) {
+    if (!file) {
+      setImagemCapaArquivo(null)
+      return
+    }
+
+    if (!validarImagem(file)) return
+
+    setImagemCapaArquivo(file)
+
+    const previewUrl = URL.createObjectURL(file)
+    setPreviewImagemCapa(previewUrl)
+  }
+
+  function selecionarImagens(files: File[]) {
+    const tiposPermitidos = [
+      'image/png',
+      'image/jpeg',
+      'image/webp',
+    ]
+
+    const imagensValidas = files.filter((file) => {
+      if (!tiposPermitidos.includes(file.type)) {
+        return false
+      }
+
+      if (file.size > 5 * 1024 * 1024) {
+        return false
+      }
+
+      return true
+    })
+
+    if (imagensValidas.length !== files.length) {
+      alert(
+        'Algumas imagens foram ignoradas. Apenas PNG, JPG ou WEBP até 5 MB são permitidas.',
+      )
+    }
+
+    setImagensArquivos((prev) => [
+      ...prev,
+      ...imagensValidas,
+    ])
+
+    const novosPreviews = imagensValidas.map((file) => ({
+      id: null,
+      url: URL.createObjectURL(file),
+      nova: true,
+    }))
+
+    setPreviewsImagens((prev) => [
+      ...prev,
+      ...novosPreviews,
+    ])
+  }
+
+  async function fazerUploadImagem(
+    provinciaId: string,
+    arquivo: File,
+    tipo: 'capa' | 'galeria',
+  ) {
+    const extensao =
+      arquivo.name.split('.').pop()?.toLowerCase() || 'jpg'
+
+    const nomeArquivo = `${provinciaId}-${tipo}-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}.${extensao}`
+
+    const caminho = `provincias/${nomeArquivo}`
+
+    const { error: uploadError } =
+      await supabase.storage
+        .from('provincias')
+        .upload(caminho, arquivo, {
+          cacheControl: '3600',
+          upsert: false,
+        })
+
+    if (uploadError) {
+      throw uploadError
+    }
+
+    const { data } = supabase.storage
+      .from('provincias')
+      .getPublicUrl(caminho)
+
+    return data.publicUrl
+  }
+
+  function extrairCaminhoStorage(url: string) {
+  try {
+    const parsed = new URL(url)
+
+    const prefix =
+      '/storage/v1/object/public/provincias/'
+
+    const index = parsed.pathname.indexOf(prefix)
+
+    if (index === -1) return null
+
+    return decodeURIComponent(
+      parsed.pathname.slice(index + prefix.length),
+    )
+  } catch {
+    return null
+  }
+}
+
+async function eliminarImagemGaleria(
+  preview: {
+    id: string | null
+    url: string
+    nova: boolean
+  },
+  index: number,
+) {
+  // FOTO NOVA, AINDA NÃO GUARDADA
+  if (preview.nova || !preview.id) {
+    const indexArquivo =
+      previewsImagens
+        .slice(0, index + 1)
+        .filter((item) => item.nova).length - 1
+
+    setImagensArquivos((prev) =>
+      prev.filter(
+        (_, arquivoIndex) =>
+          arquivoIndex !== indexArquivo,
+      ),
+    )
+
+    setPreviewsImagens((prev) =>
+      prev.filter((_, previewIndex) => previewIndex !== index),
+    )
+
+    return
+  }
+
+  const confirmar = window.confirm(
+    'Tem certeza que deseja eliminar esta foto da galeria?',
+  )
+
+  if (!confirmar) return
+
+  setApagandoImagemId(preview.id)
+
+  try {
+    // ELIMINAR FICHEIRO DO STORAGE
+    const caminho = extrairCaminhoStorage(
+      preview.url,
+    )
+
+    if (caminho) {
+      const { error: storageError } =
+        await supabase.storage
+          .from('provincias')
+          .remove([caminho])
+
+      if (storageError) {
+        console.error(storageError)
+
+        alert(
+          `Erro ao eliminar a imagem do armazenamento: ${storageError.message}`,
+        )
+
+        return
+      }
+    }
+
+    // ELIMINAR REGISTO DA GALERIA
+    const { error } = await supabase
+      .from('provincia_imagens')
+      .delete()
+      .eq('id', preview.id)
+
+    if (error) {
+      console.error(error)
+
+      alert(
+        `Erro ao eliminar a foto: ${error.message}`,
+      )
+
+      return
+    }
+
+    setPreviewsImagens((prev) =>
+      prev.filter(
+        (item) => item.id !== preview.id,
+      ),
+    )
+  } finally {
+    setApagandoImagemId(null)
+  }
+}
+
+  async function salvarProvincia() {
+    if (salvando) return
+
+    if (!form.nome.trim()) {
+      alert('Informe o nome da província.')
+      return
+    }
+
+    setSalvando(true)
+
+    try {
+      // ======================================================
+      // ADICIONAR PROVÍNCIA
+      // ======================================================
+      if (!editandoId) {
+        const { data: novaProvincia, error } =
+          await supabase
+            .from('provincias')
+            .insert({
+              nome: form.nome.trim(),
+              slug:
+                form.slug.trim() ||
+                gerarSlug(form.nome),
+              descricao:
+                form.descricao.trim() || null,
+              imagem_capa: null,
+              imagem: null,
+              publicada: form.publicada,
+            })
+            .select('id')
+            .single()
+
+        if (error) {
+          console.error(error)
+
+          alert(
+            `Erro ao adicionar a província: ${error.message}`,
+          )
+
+          return
+        }
+
+        if (!novaProvincia) {
+          alert(
+            'A província foi criada, mas não foi possível obter o ID.',
+          )
+
+          return
+        }
+
+        // IMAGEM DE CAPA
+        if (imagemCapaArquivo) {
+          try {
+            const imagemCapaUrl =
+              await fazerUploadImagem(
+                novaProvincia.id,
+                imagemCapaArquivo,
+                'capa',
+              )
+
+            const { error: capaError } =
+              await supabase
+                .from('provincias')
+                .update({
+                  imagem_capa: imagemCapaUrl,
+                  updated_at:
+                    new Date().toISOString(),
+                })
+                .eq('id', novaProvincia.id)
+
+            if (capaError) {
+              console.error(capaError)
+
+              alert(
+                `A província foi criada, mas ocorreu um erro ao guardar a imagem de capa: ${capaError.message}`,
+              )
+
+              return
+            }
+          } catch (error: any) {
+            console.error(error)
+
+            alert(
+              `A província foi criada, mas ocorreu um erro ao enviar a imagem de capa: ${
+                error?.message ||
+                'Erro desconhecido'
+              }`,
+            )
+
+            return
+          }
+        }
+
+        // GALERIA
+        if (imagensArquivos.length > 0) {
+          const novasImagens: {
+            provincia_id: string
+            imagem: string
+            ordem: number
+          }[] = []
+
+          for (
+            let index = 0;
+            index < imagensArquivos.length;
+            index++
+          ) {
+            try {
+              const imagemUrl =
+                await fazerUploadImagem(
+                  novaProvincia.id,
+                  imagensArquivos[index],
+                  'galeria',
+                )
+
+              novasImagens.push({
+                provincia_id:
+                  novaProvincia.id,
+                imagem: imagemUrl,
+                ordem: index,
+              })
+            } catch (error: any) {
+              console.error(error)
+
+              alert(
+                `A província foi criada, mas ocorreu um erro ao enviar a foto ${index + 1} da galeria: ${
+                  error?.message ||
+                  'Erro desconhecido'
+                }`,
+              )
+            }
+          }
+
+          if (novasImagens.length > 0) {
+            const {
+              error: galeriaError,
+            } = await supabase
+              .from('provincia_imagens')
+              .insert(novasImagens)
+
+            if (galeriaError) {
+              console.error(galeriaError)
+
+              alert(
+                `A província foi criada, mas ocorreu um erro ao guardar as fotos: ${galeriaError.message}`,
+              )
+
+              return
+            }
+          }
+        }
+      } else {
+        // ======================================================
+        // EDITAR PROVÍNCIA
+        // ======================================================
+        const { error } = await supabase
+          .from('provincias')
+          .update({
+            nome: form.nome.trim(),
+            slug:
+              form.slug.trim() ||
+              gerarSlug(form.nome),
+            descricao:
+              form.descricao.trim() || null,
+            publicada: form.publicada,
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq('id', editandoId)
+
+        if (error) {
+          console.error(error)
+
+          alert(
+            `Erro ao atualizar a província: ${error.message}`,
+          )
+
+          return
+        }
+
+        // NOVA IMAGEM DE CAPA
+        if (imagemCapaArquivo) {
+          try {
+            const imagemCapaUrl =
+              await fazerUploadImagem(
+                editandoId,
+                imagemCapaArquivo,
+                'capa',
+              )
+
+            const {
+              error: capaError,
+            } = await supabase
+              .from('provincias')
+              .update({
+                imagem_capa: imagemCapaUrl,
+                updated_at:
+                  new Date().toISOString(),
+              })
+              .eq('id', editandoId)
+
+            if (capaError) {
+              console.error(capaError)
+
+              alert(
+                `A província foi atualizada, mas ocorreu um erro ao guardar a nova imagem de capa: ${capaError.message}`,
+              )
+
+              return
+            }
+          } catch (error: any) {
+            console.error(error)
+
+            alert(
+              `A província foi atualizada, mas ocorreu um erro ao enviar a nova imagem de capa: ${
+                error?.message ||
+                'Erro desconhecido'
+              }`,
+            )
+
+            return
+          }
+        }
+
+        // NOVAS FOTOS DA GALERIA
+        if (imagensArquivos.length > 0) {
+          const {
+            data: ultimaImagem,
+            error: ultimaImagemError,
+          } = await supabase
+            .from('provincia_imagens')
+            .select('ordem')
+            .eq('provincia_id', editandoId)
+            .order('ordem', {
+              ascending: false,
+            })
+            .limit(1)
+            .maybeSingle()
+
+          if (ultimaImagemError) {
+            console.error(
+              ultimaImagemError,
+            )
+
+            alert(
+              `A província foi atualizada, mas ocorreu um erro ao verificar a galeria: ${ultimaImagemError.message}`,
+            )
+
+            return
+          }
+
+          const ordemInicial =
+            typeof ultimaImagem?.ordem ===
+            'number'
+              ? ultimaImagem.ordem + 1
+              : 0
+
+          const novasImagens: {
+            provincia_id: string
+            imagem: string
+            ordem: number
+          }[] = []
+
+          for (
+            let index = 0;
+            index < imagensArquivos.length;
+            index++
+          ) {
+            try {
+              const imagemUrl =
+                await fazerUploadImagem(
+                  editandoId,
+                  imagensArquivos[index],
+                  'galeria',
+                )
+
+              novasImagens.push({
+                provincia_id:
+                  editandoId,
+                imagem: imagemUrl,
+                ordem:
+                  ordemInicial + index,
+              })
+            } catch (error: any) {
+              console.error(error)
+
+              alert(
+                `A província foi atualizada, mas ocorreu um erro ao enviar a foto ${index + 1} da galeria: ${
+                  error?.message ||
+                  'Erro desconhecido'
+                }`,
+              )
+            }
+          }
+
+          if (novasImagens.length > 0) {
+            const {
+              error: galeriaError,
+            } = await supabase
+              .from('provincia_imagens')
+              .insert(novasImagens)
+
+            if (galeriaError) {
+              console.error(
+                galeriaError,
+              )
+
+              alert(
+                `A província foi atualizada, mas ocorreu um erro ao guardar as novas fotos: ${galeriaError.message}`,
+              )
+
+              return
+            }
+          }
+        }
+      }
+
+      // LIMPAR E FECHAR
+      setModalAberto(false)
+      setEditandoId(null)
+
+      setImagemCapaArquivo(null)
+      setPreviewImagemCapa(null)
+
+      setImagensArquivos([])
+      setPreviewsImagens([])
+
+      router.refresh()
+    } catch (error: any) {
+      console.error(error)
+
+      alert(
+        error?.message ||
+          'Ocorreu um erro ao guardar a província.',
+      )
+    } finally {
+      setSalvando(false)
+    }
+  }
+
   return (
     <div className="mx-auto max-w-[1500px]">
       <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
@@ -2353,16 +3650,31 @@ function ProvinciasSection({
           <h2 className="text-2xl font-black tracking-tight text-gray-950">
             Províncias
           </h2>
+
           <p className="mt-1 text-sm text-gray-500">
             Gerencie as províncias disponíveis na Wizenda.
           </p>
         </div>
 
-        <div className="rounded-xl bg-white px-4 py-3 text-sm shadow-sm ring-1 ring-gray-100">
-          <span className="text-gray-500">Total:</span>{' '}
-          <span className="font-bold text-gray-950">
-            {provincias.length}
-          </span>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="rounded-xl bg-white px-4 py-3 text-sm shadow-sm ring-1 ring-gray-100">
+            <span className="text-gray-500">
+              Total:
+            </span>{' '}
+
+            <span className="font-bold text-gray-950">
+              {provincias.length}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={abrirAdicionar}
+            className="inline-flex items-center gap-2 rounded-xl bg-gray-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-gray-800"
+          >
+            <Plus size={18} />
+            Adicionar província
+          </button>
         </div>
       </div>
 
@@ -2377,8 +3689,17 @@ function ProvinciasSection({
           </h3>
 
           <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">
-            As províncias adicionadas ao Supabase aparecerão aqui.
+            Adicione a primeira província da Wizenda.
           </p>
+
+          <button
+            type="button"
+            onClick={abrirAdicionar}
+            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-gray-950 px-5 py-3 text-sm font-bold text-white hover:bg-gray-800"
+          >
+            <Plus size={18} />
+            Adicionar província
+          </button>
         </div>
       ) : (
         <div className="grid gap-5">
@@ -2389,9 +3710,9 @@ function ProvinciasSection({
             >
               <div className="flex flex-col lg:flex-row">
                 <div className="h-48 w-full shrink-0 bg-gray-100 lg:h-auto lg:w-64">
-                  {provincia.imagem ? (
+                  {provincia.imagem_capa ? (
                     <img
-                      src={provincia.imagem}
+                      src={provincia.imagem_capa}
                       alt={provincia.nome}
                       className="h-full w-full object-cover"
                     />
@@ -2404,7 +3725,7 @@ function ProvinciasSection({
 
                 <div className="min-w-0 flex-1 p-5 sm:p-6">
                   <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-                    <div>
+                    <div className="min-w-0">
                       <span
                         className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${
                           provincia.publicada
@@ -2421,26 +3742,79 @@ function ProvinciasSection({
                         {provincia.nome}
                       </h3>
 
-                      <p className="mt-1 text-sm text-gray-500">
-                        /provincias/{provincia.slug}
-                      </p>
-
                       <p className="mt-4 max-w-2xl text-sm leading-6 text-gray-600">
-                        {provincia.descricao ||
-                          'Sem descrição disponível.'}
-                      </p>
+              {provincia.descricao
+                  ? provincia.descricao.length > 180
+                   ? `${provincia.descricao.slice(0, 180)}...`
+               : provincia.descricao
+             : 'Sem descrição disponível.'}
+             </p>
 
                       <p className="mt-4 text-xs text-gray-400">
-                        Criada em {formatDate(provincia.created_at)}
+                        Criada em{' '}
+                        {formatDate(
+                          provincia.created_at,
+                        )}
                       </p>
                     </div>
 
-                    <button
-                      type="button"
-                      className="inline-flex shrink-0 items-center justify-center rounded-xl bg-gray-950 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-gray-800"
-                    >
-                      Editar
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          alternarPublicacao(
+                            provincia,
+                          )
+                        }
+                        className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-bold text-gray-700 transition hover:bg-gray-50"
+                      >
+                        {provincia.publicada ? (
+                          <>
+                            <EyeOff size={16} />
+                            Despublicar
+                          </>
+                        ) : (
+                          <>
+                            <Eye size={16} />
+                            Publicar
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          abrirEditar(
+                            provincia,
+                          )
+                        }
+                        className="inline-flex items-center gap-2 rounded-xl bg-gray-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-gray-800"
+                      >
+                        <Pencil size={16} />
+                        Editar
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          eliminarProvincia(
+                            provincia,
+                          )
+                        }
+                        disabled={
+                          apagandoId ===
+                          provincia.id
+                        }
+                        className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-bold text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Trash2 size={16} />
+
+                        {apagandoId ===
+                        provincia.id
+                          ? 'A eliminar...'
+                          : 'Eliminar'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2448,10 +3822,343 @@ function ProvinciasSection({
           ))}
         </div>
       )}
+
+      {modalAberto && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-5">
+              <div>
+                <h3 className="text-xl font-black text-gray-950">
+                  {editandoId
+                    ? 'Editar província'
+                    : 'Adicionar província'}
+                </h3>
+
+                <p className="mt-1 text-sm text-gray-500">
+                  Defina as informações que serão apresentadas na Wizenda.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={fecharModal}
+                className="flex h-10 w-10 items-center justify-center rounded-xl text-gray-500 transition hover:bg-gray-100 hover:text-gray-950"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="max-h-[75vh] overflow-y-auto p-6">
+              <div className="grid gap-5">
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-gray-800">
+                    Nome da província
+                  </label>
+
+                  <input
+                    type="text"
+                    value={form.nome}
+                    onChange={(e) => {
+                      const nome =
+                        e.target.value
+
+                      setForm((prev) => ({
+                        ...prev,
+                        nome,
+                        slug: gerarSlug(
+                          nome,
+                        ),
+                      }))
+                    }}
+                    placeholder="Ex.: Luanda"
+                    className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-gray-800">
+                    Descrição
+                  </label>
+
+                  <textarea
+                    value={form.descricao}
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        descricao:
+                          e.target.value,
+                      }))
+                    }
+                    rows={5}
+                    placeholder="Descreva a província..."
+                    className="w-full resize-none rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+                  />
+                </div>
+
+                {/* IMAGEM DE CAPA */}
+
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-gray-800">
+                    Imagem de capa
+                  </label>
+
+                  <p className="mb-3 text-xs text-gray-500">
+                    Esta imagem será apresentada no cartão da província.
+                  </p>
+
+                  <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 px-6 py-8 transition hover:border-orange-400 hover:bg-orange-50">
+                    <Plus
+                      size={28}
+                      className="text-gray-400"
+                    />
+
+                    <span className="mt-3 text-sm font-bold text-gray-700">
+                      Escolher imagem de capa
+                    </span>
+
+                    <span className="mt-1 text-xs text-gray-400">
+                      PNG, JPG ou WEBP · máximo 5 MB
+                    </span>
+
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      className="hidden"
+                      onChange={(e) => {
+                        selecionarImagemCapa(
+                          e.target.files?.[0] ||
+                            null,
+                        )
+
+                        e.currentTarget.value =
+                          ''
+                      }}
+                    />
+                  </label>
+
+                  {previewImagemCapa && (
+                    <div className="relative mt-4 overflow-hidden rounded-2xl bg-gray-100">
+                      <img
+                        src={
+                          previewImagemCapa
+                        }
+                        alt="Pré-visualização da capa"
+                        className="h-48 w-full object-cover"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setImagemCapaArquivo(
+                            null,
+                          )
+
+                          setPreviewImagemCapa(
+                            editandoId
+                              ? form.imagem_capa ||
+                                  null
+                              : null,
+                          )
+                        }}
+                        className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80"
+                      >
+                        <X size={17} />
+                      </button>
+                    </div>
+                  )}
+
+                  {imagemCapaArquivo && (
+                    <p className="mt-2 text-xs text-gray-500">
+                      Imagem selecionada:{' '}
+                      <span className="font-semibold">
+                        {
+                          imagemCapaArquivo.name
+                        }
+                      </span>
+                    </p>
+                  )}
+                </div>
+
+                {/* GALERIA DA PÁGINA */}
+
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-gray-800">
+                    Fotos da página
+                  </label>
+
+                  <p className="mb-3 text-xs text-gray-500">
+                    Adicione várias fotos da província. Estas imagens serão apresentadas no carrossel da página.
+                  </p>
+
+                  <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 px-6 py-8 transition hover:border-orange-400 hover:bg-orange-50">
+                    <Plus
+                      size={28}
+                      className="text-gray-400"
+                    />
+
+                    <span className="mt-3 text-sm font-bold text-gray-700">
+                      Escolher fotos da página
+                    </span>
+
+                    <span className="mt-1 text-center text-xs text-gray-400">
+                      Pode selecionar várias · PNG, JPG ou WEBP · máximo 5 MB por imagem
+                    </span>
+
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => {
+                        selecionarImagens(
+                          Array.from(
+                            e.target.files ||
+                              [],
+                          ),
+                        )
+
+                        e.currentTarget.value =
+                          ''
+                      }}
+                    />
+                  </label>
+
+                {previewsImagens.length > 0 && (
+  <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+    {previewsImagens.map(
+      (preview, index) => (
+        <div
+          key={
+            preview.id ||
+            preview.url
+          }
+          className="group relative overflow-hidden rounded-2xl bg-gray-100"
+        >
+          <img
+            src={preview.url}
+            alt={`Pré-visualização ${
+              index + 1
+            }`}
+            className="h-32 w-full object-cover"
+          />
+
+          <div className="absolute left-2 top-2 rounded-full bg-black/60 px-2.5 py-1 text-xs font-bold text-white">
+            Foto {index + 1}
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              eliminarImagemGaleria(
+                preview,
+                index,
+              )
+            }
+            disabled={
+              !preview.nova &&
+              apagandoImagemId ===
+                preview.id
+            }
+            className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full bg-red-600 text-white shadow-lg transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            title="Eliminar foto"
+          >
+            {apagandoImagemId ===
+            preview.id ? (
+              <span className="text-xs">
+                ...
+              </span>
+            ) : (
+              <Trash2 size={16} />
+            )}
+          </button>
+
+          {preview.nova && (
+            <div className="absolute bottom-2 left-2 rounded-full bg-orange-500 px-2.5 py-1 text-[10px] font-bold text-white">
+              Nova
+            </div>
+          )}
+        </div>
+      ),
+    )}
+  </div>
+)}
+
+                  {imagensArquivos.length >
+                    0 && (
+                    <p className="mt-3 text-xs text-gray-500">
+                      <span className="font-semibold">
+                        {
+                          imagensArquivos.length
+                        }
+                      </span>{' '}
+                      {imagensArquivos.length ===
+                      1
+                        ? 'imagem selecionada'
+                        : 'imagens selecionadas'}
+                    </p>
+                  )}
+                </div>
+
+                {/* PUBLICAÇÃO */}
+
+                <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-gray-200 p-4">
+                  <input
+                    type="checkbox"
+                    checked={form.publicada}
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        publicada:
+                          e.target.checked,
+                      }))
+                    }
+                    className="h-4 w-4 accent-orange-500"
+                  />
+
+                  <div>
+                    <p className="text-sm font-bold text-gray-900">
+                      Publicar província
+                    </p>
+
+                    <p className="text-xs text-gray-500">
+                      Se desativado, a província não será apresentada publicamente.
+                    </p>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-5">
+              <button
+                type="button"
+                onClick={fecharModal}
+                disabled={salvando}
+                className="rounded-xl border border-gray-200 px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={salvarProvincia}
+                disabled={salvando}
+                className="inline-flex items-center gap-2 rounded-xl bg-gray-950 px-5 py-3 text-sm font-bold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Save size={17} />
+
+                {salvando
+                  ? 'A guardar...'
+                  : editandoId
+                    ? 'Guardar alterações'
+                    : 'Adicionar província'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
-
 
 
 export default function AdminDashboardClient({
@@ -2464,9 +4171,14 @@ export default function AdminDashboardClient({
   agencies = [],
   experiences = [],
   provincias = [],
+  conversations = [],
+  conversationMessages = [],
 }: DashboardProps) {
   const [activeMenu, setActiveMenu] =
     useState<MenuKey>('overview')
+  
+  const [selectedConversationId, setSelectedConversationId] =
+    useState<string | null>(null)  
 
   const [loadingId, setLoadingId] =
     useState<string | null>(null)
@@ -2496,6 +4208,12 @@ export default function AdminDashboardClient({
 
   const router = useRouter()
   const supabase = createClient()
+
+    async function handleLogout() {
+    await supabase.auth.signOut()
+    window.location.href = '/login'
+  }
+
 
   const activeItem = menuSections
     .flatMap((section) => section.items)
@@ -2785,9 +4503,20 @@ export default function AdminDashboardClient({
                 </h1>
               </div>
 
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-50 text-orange-500">
-                <ShieldCheck size={19} />
-              </div>
+              <div className="flex items-center gap-3">
+  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-50 text-orange-500">
+    <ShieldCheck size={19} />
+  </div>
+
+  <button
+    type="button"
+    onClick={handleLogout}
+    className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+  >
+    <LogOut size={16} />
+    Terminar sessão
+  </button>
+</div>
             </div>
 
             <div className="overflow-x-auto border-t border-gray-100 px-5 py-3 lg:hidden">
@@ -2988,6 +4717,14 @@ export default function AdminDashboardClient({
               </div>
             )}
 
+
+
+
+{activeMenu === 'advertisements' && (
+  <AdminAdvertisementsSection />
+)}
+
+
             {/* EMPRESAS */}
 
             {activeMenu === 'companies' && (
@@ -2998,8 +4735,7 @@ export default function AdminDashboardClient({
                 }
               />
             )}
-
-            {activeMenu === 'provincias' && (
+{activeMenu === 'provincias' && (
   <ProvinciasSection provincias={provincias} />
 )}
 
@@ -3025,13 +4761,33 @@ export default function AdminDashboardClient({
               <MusicSection />
             )}
 
+            {/* CONVERSAS */}
+
+{activeMenu === 'conversations' && (
+  <ConversationsSection
+    conversations={conversations}
+    messages={conversationMessages}
+    users={users}
+    agencies={agencies}
+    experiences={experiences}
+    selectedConversationId={
+      selectedConversationId
+    }
+    onSelectConversation={
+      setSelectedConversationId
+    }
+  />
+)}
+
             {/* OUTROS */}
 
             {activeMenu !== 'overview' &&
               activeMenu !== 'companies' &&
               activeMenu !== 'content' &&
               activeMenu !== 'music' &&
-              activeMenu !== 'provincias' && (
+              activeMenu !== 'provincias' && 
+              activeMenu !== 'conversations' &&
+              activeMenu !== 'advertisements' &&(
                 <div className="mx-auto flex min-h-[500px] max-w-[1500px] items-center justify-center">
                   <div className="text-center">
                     <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50 text-orange-500">
