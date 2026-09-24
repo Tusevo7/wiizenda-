@@ -2,7 +2,7 @@ import Link from 'next/link'
 import {
   ArrowLeft,
   Globe,
-  Instagram,
+  InstagramIcon,
   MapPin,
   Phone,
 } from 'lucide-react'
@@ -351,7 +351,7 @@ export default async function WeekendPlacePage({
                     rel="noopener noreferrer"
                     className="flex items-center gap-3 rounded-2xl border border-gray-100 p-3 text-sm font-bold text-gray-700 transition hover:border-orange-200 hover:bg-orange-50 hover:text-orange-600"
                   >
-                    <Instagram size={17} />
+                    <InstagramIcon size={17} />
                     <span className="truncate">
                       Instagram
                     </span>
