@@ -137,6 +137,7 @@ type AdminProvince = {
   slug: string
   descricao: string | null
   imagem: string | null
+  imagem_capa: string | null
   publicada: boolean
   created_at: string
   updated_at: string
