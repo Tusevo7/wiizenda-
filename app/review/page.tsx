@@ -48,6 +48,7 @@ type Post = {
   saved: boolean
   likes_count: number
   comments_count: number
+  views_count: number
 }
 
 type Comment = {
@@ -969,6 +970,11 @@ let allComments: {
                   comment.post_id ===
                   post.id,
               ).length,
+              views_count:
+  allViews.filter(
+    (view) =>
+      view.post_id === post.id,
+  ).length,
           }
         })
 
@@ -1000,6 +1006,9 @@ let allComments: {
   useEffect(() => {
     loadPosts()
   }, [])
+
+
+
 
   /*
    * ============================================================
@@ -1086,18 +1095,22 @@ let allComments: {
             return
           }
 
-          const post =
-            posts.find(
-              (item) =>
-                item.id === postId,
-            )
+          const post = posts.find(
+  (item) =>
+    item.id === postId,
+)
 
-          if (!post) return
+if (!post) return
 
-          /*
-           * MUDA A MÚSICA.
-           */
-          playPostMusic(post)
+/*
+ * REGISTRA A VISUALIZAÇÃO
+ */
+registerPostView(post)
+
+/*
+ * MUDA A MÚSICA.
+ */
+playPostMusic(post)
         },
         {
           root: container,
@@ -1461,6 +1474,58 @@ async function openComments(post: Post) {
     setCommentsLoading(false)
   }
 }
+
+/*/*
+ * ============================================================
+ * VISUALIZAÇAO DO POST
+ * ============================================================
+ */
+
+async function registerPostView(post: Post) {
+  const userId = currentUserIdRef.current
+
+  if (!userId) return
+
+  try {
+    const {
+      data,
+      error,
+    } = await supabase.rpc(
+      'register_post_view',
+      {
+        p_post_id: post.id,
+      },
+    )
+
+    if (error) {
+      console.error(
+        'Erro ao registrar visualização:',
+        error,
+      )
+      return
+    }
+
+    if (typeof data === 'number') {
+      setPosts((current) =>
+        current.map((item) =>
+          item.id === post.id
+            ? {
+                ...item,
+                views_count: data,
+              }
+            : item,
+        ),
+      )
+    }
+  } catch (error) {
+    console.error(
+      'Erro ao registrar visualização:',
+      error,
+    )
+  }
+}
+
+
 /*/*
  * ============================================================
  * SHARE
