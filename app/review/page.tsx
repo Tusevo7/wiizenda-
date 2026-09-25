@@ -23,6 +23,7 @@ import {
 } from 'react'
 
 import { createClient } from '@/lib/supabase/client'
+import { Content } from 'next/font/google'
 
 type Post = {
   id: string
@@ -143,7 +144,6 @@ export default function ReviewPage() {
 
 
 
-
 async function addComment() {
   const userId = currentUserIdRef.current
 
@@ -159,15 +159,18 @@ async function addComment() {
 
   setCommentText('')
 
-  const { data, error } = await supabase
+  const {
+    data,
+    error,
+  } = await supabase
     .from('community_comments')
     .insert({
       post_id: selectedPost.id,
       user_id: userId,
-    Comment: text,
+      comment: text,
     })
     .select(
-      'id, post_id, user_id, Comment, created_at',
+      'id, post_id, user_id, comment, created_at',
     )
     .single()
 
@@ -181,9 +184,13 @@ async function addComment() {
     return
   }
 
-  const { data: profile } = await supabase
+  const {
+    data: profile,
+  } = await supabase
     .from('profiles')
-    .select('full_name, avatar_url')
+    .select(
+      'full_name, avatar_url',
+    )
     .eq('id', userId)
     .maybeSingle()
 
@@ -191,12 +198,14 @@ async function addComment() {
     id: data.id,
     post_id: data.post_id,
     user_id: data.user_id,
-    content: data.content,
+    comment: data.comment,
     created_at: data.created_at,
     user_name:
-      profile?.full_name || 'Utilizador',
+      profile?.full_name ||
+      'Utilizador',
     user_avatar:
-      profile?.avatar_url ?? null,
+      profile?.avatar_url ??
+      null,
   }
 
   setComments((current) => [
