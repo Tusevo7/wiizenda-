@@ -10,6 +10,7 @@ import {
   LogOut,
   MapPin,
   Menu,
+  User,
   MessageCircle,
   Map,
   Settings,
@@ -260,55 +261,7 @@ export default function AppHeader() {
 
             </div>
 
-            <div className="my-5 border-t border-gray-100" />
-
-            <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
-              Comunidade
-            </p>
-
-            <div className="space-y-1">
-
-              {/* REVIEW */}
-              <Link
-                href="/review"
-                onClick={closeMenu}
-                className="flex items-center gap-3 rounded-[4px] px-3 py-3 text-sm font-semibold text-gray-900 hover:bg-orange-50"
-              >
-                <Star
-                  size={19}
-                  className="text-orange-500"
-                />
-                Review
-              </Link>
-
-              <Link
-                href="/favorites"
-                onClick={closeMenu}
-                className="flex items-center gap-3 rounded-[4px] px-3 py-3 text-sm font-medium text-gray-800 hover:bg-gray-50"
-              >
-                <Heart size={19} className="text-gray-500" />
-                Favoritos
-              </Link>
-
-              <Link
-                href="/messages"
-                onClick={closeMenu}
-                className="flex items-center gap-3 rounded-[4px] px-3 py-3 text-sm font-medium text-gray-800 hover:bg-gray-50"
-              >
-                <MessageCircle size={19} className="text-gray-500" />
-                Mensagens
-              </Link>
-
-              <Link
-                href="/notifications"
-                onClick={closeMenu}
-                className="flex items-center gap-3 rounded-[4px] px-3 py-3 text-sm font-medium text-gray-800 hover:bg-gray-50"
-              >
-                <Bell size={19} className="text-gray-500" />
-                Notificações
-              </Link>
-
-            </div>
+          
 
             <div className="my-5 border-t border-gray-100" />
 
@@ -332,7 +285,7 @@ export default function AppHeader() {
                 onClick={closeMenu}
                 className="flex items-center gap-3 rounded-[4px] px-3 py-3 text-sm font-medium text-gray-800 hover:bg-gray-50"
               >
-                <Heart size={19} className="text-gray-500" />
+                <User size={19} className="text-gray-500" />
                 Meu perfil
               </Link>
 

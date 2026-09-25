@@ -1,4 +1,3 @@
-
 import AppShell from '../components/app-shell'
 import SearchBar from '../components/search-bar'
 import ExperienceCard from '../components/experience-card'
@@ -25,6 +24,13 @@ type Experience = {
   activity_start_at: string | null
   activity_end_at: string | null
   agency_id: string | null
+
+  // Música
+  music_title: string | null
+  music_artist: string | null
+  music_url: string | null
+  music_start_seconds: number | null
+  music_duration_seconds: number | null
 }
 
 type Agency = {
@@ -54,7 +60,13 @@ export default async function ExplorePage() {
       cover_image,
       activity_start_at,
       activity_end_at,
-      agency_id
+      agency_id,
+
+      music_title,
+      music_artist,
+      music_url,
+      music_start_seconds,
+      music_duration_seconds
     `)
     .eq('status', 'published')
     .gt('activity_end_at', now)
@@ -269,36 +281,68 @@ export default async function ExplorePage() {
                   return (
                     <ExperienceCard
                       key={experience.id}
+
                       id={experience.id}
+
                       slug={experience.slug}
+
                       title={experience.title}
+
                       location={
                         experience.location ||
                         experience.city ||
                         experience.province ||
                         'Angola'
                       }
+
                       price={`${Number(
                         experience.price,
                       ).toLocaleString(
                         'pt-AO',
                       )} Kz`}
+
                       rating={rating}
+
                       image={
                         experience.cover_image ||
                         '/placeholder-experience.jpg'
                       }
+
                       activityStartAt={
                         experience.activity_start_at ||
                         ''
                       }
+
                       agencyName={
                         agency?.name ||
                         'Agência'
                       }
+
                       agencyLogo={
                         agency?.logo_url ||
                         null
+                      }
+
+                    
+
+                      musicTitle={
+                        experience.music_title
+                      }
+
+                      musicArtist={
+                        experience.music_artist
+                      }
+
+                      musicUrl={
+                        experience.music_url
+                      }
+
+                      musicStartSeconds={
+                        experience.music_start_seconds
+                      }
+
+                      musicDurationSeconds={
+                        experience.music_duration_seconds
                       }
                     />
                   )
