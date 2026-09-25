@@ -141,6 +141,87 @@ export default function ReviewPage() {
     return userId
   }
 
+
+
+
+async function addComment() {
+  const userId = currentUserIdRef.current
+
+  if (
+    !userId ||
+    !selectedPost ||
+    !commentText.trim()
+  ) {
+    return
+  }
+
+  const text = commentText.trim()
+
+  setCommentText('')
+
+  const { data, error } = await supabase
+    .from('community_comments')
+    .insert({
+      post_id: selectedPost.id,
+      user_id: userId,
+      content: text,
+    })
+    .select(
+      'id, post_id, user_id, content, created_at',
+    )
+    .single()
+
+  if (error) {
+    console.error(
+      'Erro ao adicionar comentário:',
+      error,
+    )
+
+    setCommentText(text)
+    return
+  }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('full_name, avatar_url')
+    .eq('id', userId)
+    .maybeSingle()
+
+  const newComment: Comment = {
+    id: data.id,
+    post_id: data.post_id,
+    user_id: data.user_id,
+    content: data.content,
+    created_at: data.created_at,
+    user_name:
+      profile?.full_name || 'Utilizador',
+    user_avatar:
+      profile?.avatar_url ?? null,
+  }
+
+  setComments((current) => [
+    ...current,
+    newComment,
+  ])
+
+  setPosts((current) =>
+    current.map((post) =>
+      post.id === selectedPost.id
+        ? {
+            ...post,
+            comments_count:
+              post.comments_count + 1,
+          }
+        : post,
+    ),
+  )
+}
+
+
+
+
+
+
   /*
    * ============================================================
    * CONTROLE CENTRAL DA MÚSICA
