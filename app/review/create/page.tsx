@@ -1115,6 +1115,194 @@ export default function ReviewCreatePage() {
     }
   }
 
+const removeAudioFromVideo = async (
+  file: File,
+): Promise<Blob> => {
+  const url = URL.createObjectURL(file)
+
+  try {
+    const video = document.createElement('video')
+
+    video.src = url
+    video.muted = true
+    video.playsInline = true
+    video.preload = 'auto'
+
+    await new Promise<void>((resolve, reject) => {
+      video.onloadedmetadata = () => resolve()
+      video.onerror = () =>
+        reject(
+          new Error(
+            'Não foi possível processar o vídeo.',
+          ),
+        )
+    })
+
+    const width = video.videoWidth
+    const height = video.videoHeight
+
+    if (!width || !height) {
+      throw new Error(
+        'Não foi possível obter as dimensões do vídeo.',
+      )
+    }
+
+    const canvas =
+      document.createElement('canvas')
+
+    canvas.width = width
+    canvas.height = height
+
+    const context =
+      canvas.getContext('2d')
+
+    if (!context) {
+      throw new Error(
+        'Não foi possível processar o vídeo.',
+      )
+    }
+
+    if (!canvas.captureStream) {
+      throw new Error(
+        'Este navegador não suporta a remoção de áudio do vídeo.',
+      )
+    }
+
+    const videoStream =
+      canvas.captureStream(30)
+
+    const mimeTypes = [
+      'video/webm;codecs=vp9',
+      'video/webm;codecs=vp8',
+      'video/webm',
+    ]
+
+    const mimeType =
+      mimeTypes.find((type) =>
+        MediaRecorder.isTypeSupported(
+          type,
+        ),
+      ) || ''
+
+    const chunks: Blob[] = []
+
+    const recorder = mimeType
+      ? new MediaRecorder(
+          videoStream,
+          {
+            mimeType,
+            videoBitsPerSecond:
+              6_000_000,
+          },
+        )
+      : new MediaRecorder(
+          videoStream,
+        )
+
+    const finished =
+      new Promise<Blob>(
+        (resolve, reject) => {
+          recorder.ondataavailable = (
+            event,
+          ) => {
+            if (
+              event.data.size > 0
+            ) {
+              chunks.push(
+                event.data,
+              )
+            }
+          }
+
+          recorder.onerror = () => {
+            reject(
+              new Error(
+                'Ocorreu um erro ao remover o áudio do vídeo.',
+              ),
+            )
+          }
+
+          recorder.onstop = () => {
+            resolve(
+              new Blob(
+                chunks,
+                {
+                  type:
+                    recorder.mimeType ||
+                    'video/webm',
+                },
+              ),
+            )
+          }
+        },
+      )
+
+    let animationFrame = 0
+
+    const drawFrame = () => {
+      if (
+        video.paused ||
+        video.ended
+      ) {
+        return
+      }
+
+      context.drawImage(
+        video,
+        0,
+        0,
+        width,
+        height,
+      )
+
+      animationFrame =
+        requestAnimationFrame(
+          drawFrame,
+        )
+    }
+
+    video.onended = () => {
+      cancelAnimationFrame(
+        animationFrame,
+      )
+
+      if (
+        recorder.state !==
+        'inactive'
+      ) {
+        recorder.stop()
+      }
+    }
+
+    recorder.start(250)
+
+    await video.play()
+
+    drawFrame()
+
+    const result =
+      await finished
+
+    video.pause()
+
+    cancelAnimationFrame(
+      animationFrame,
+    )
+
+    videoStream
+      .getTracks()
+      .forEach((track) =>
+        track.stop(),
+      )
+
+    return result
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+
+
   /* -------------------------------------------------------
      PUBLISH
   ------------------------------------------------------- */
@@ -1175,18 +1363,45 @@ export default function ReviewCreatePage() {
 
       /* VÍDEO */
 
-      else {
-        extension =
-          mediaFile.name
-            .toLowerCase()
-            .endsWith('.mp4')
-            ? 'mp4'
-            : 'webm'
+else {
+  if (originalAudioEnabled) {
+    /*
+      ÁUDIO ORIGINAL ATIVADO
 
-        contentType =
-          mediaFile.type ||
-          'video/webm'
-      }
+      Mantém o ficheiro exatamente como foi
+      gravado/importado, incluindo o áudio.
+    */
+
+    uploadBlob = mediaFile
+
+    extension =
+      mediaFile.name
+        .toLowerCase()
+        .endsWith('.mp4')
+        ? 'mp4'
+        : 'webm'
+
+    contentType =
+      mediaFile.type ||
+      'video/webm'
+  } else {
+    /*
+      ÁUDIO ORIGINAL DESATIVADO
+
+      Remove fisicamente a faixa de áudio
+      antes de enviar o vídeo para o Storage.
+    */
+
+    uploadBlob =
+      await removeAudioFromVideo(
+        mediaFile,
+      )
+
+    extension = 'webm'
+
+    contentType = 'video/webm'
+  }
+}
 
       const filePath =
         `${user.id}/${crypto.randomUUID()}.${extension}`
