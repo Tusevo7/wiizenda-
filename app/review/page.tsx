@@ -49,7 +49,7 @@ type Post = {
   likes_count: number
   comments_count: number
   saves_count: number
-  views_count: number
+ 
 }
 
 type Comment = {
@@ -2546,44 +2546,33 @@ function openMedia() {
               </div>
 
               <div className="border-t border-gray-100 p-4">
-                <form
-                  onSubmit={(
-                    event,
-                  ) => {
-                    event.preventDefault()
-                    addComment()
-                  }}
-                  className="flex items-center gap-2"
-                >
-                  <input
-                    value={
-                      commentText
-                    }
-                    onChange={(
-                      event,
-                    ) =>
-                      setCommentText(
-                        event.target
-                          .value,
-                      )
-                    }
-                    placeholder="Escreva um comentário..."
-                    className="min-w-0 flex-1 rounded-full bg-gray-100 px-4 py-3 text-sm outline-none placeholder:text-gray-400"
-                  />
+  <form
+    onSubmit={(event) => {
+      event.preventDefault()
+      addComment()
+    }}
+    className="flex items-center gap-2"
+  >
+    <input
+      type="text"
+      value={commentText}
+      onChange={(event) => {
+        setCommentText(event.target.value)
+      }}
+      placeholder="Escreva um comentário..."
+      className="min-w-0 flex-1 rounded-full bg-gray-100 px-4 py-3 text-sm outline-none placeholder:text-gray-400"
+    />
 
-                  <button
-                    type="submit"
-                    disabled={
-                      !commentText.trim()
-                    }
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black text-white disabled:opacity-30"
-                  >
-                    <Send
-                      size={17}
-                    />
-                  </button>
-                </form>
-              </div>
+    <button
+      type="submit"
+      disabled={!commentText.trim()}
+      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black text-white disabled:opacity-30"
+      aria-label="Enviar comentário"
+    >
+      <Send size={18} />
+    </button>
+  </form>
+</div>
             </div>
           </div>
         )}
