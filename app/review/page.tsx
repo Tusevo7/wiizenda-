@@ -48,6 +48,7 @@ type Post = {
   saved: boolean
   likes_count: number
   comments_count: number
+  saves_count: number
   views_count: number
 }
 
@@ -507,7 +508,31 @@ useEffect(() => {
             agency,
           ]),
       )
+let allSaves: {
+  id: string
+  post_id: string
+  user_id: string
+}[] = []
 
+const {
+  data: savesData,
+  error: savesError,
+} = await supabase
+  .from('community_saves')
+  .select(`
+    id,
+    post_id,
+    user_id
+  `)
+
+if (savesError) {
+  console.error(
+    'Erro ao carregar guardados:',
+    savesError,
+  )
+} else {
+  allSaves = savesData ?? []
+}
       /*
        * ========================================================
        * TAGGED AGENCIES
@@ -970,11 +995,12 @@ let allComments: {
                   comment.post_id ===
                   post.id,
               ).length,
-              views_count:
-  allViews.filter(
-    (view) =>
-      view.post_id === post.id,
+              saves_count:
+  allSaves.filter(
+    (save) =>
+      save.post_id === post.id,
   ).length,
+  
           }
         })
 
@@ -2255,26 +2281,26 @@ function openMedia() {
                */}
 
               <button
-                type="button"
-                onClick={() =>
-                  toggleSave(
-                    post,
-                  )
-                }
-                className="flex flex-col items-center gap-1 text-white"
-                aria-label="Guardar"
-              >
-                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/30 backdrop-blur-xl transition hover:bg-black/50">
-                  <Bookmark
-                    size={21}
-                    className={
-                      post.saved
-                        ? 'fill-white text-white'
-                        : 'text-white'
-                    }
-                  />
-                </span>
-              </button>
+  type="button"
+  onClick={() => toggleSave(post)}
+  className="flex flex-col items-center gap-1 text-white"
+  aria-label="Guardar"
+>
+  <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/30 backdrop-blur-xl transition hover:bg-black/50">
+    <Bookmark
+      size={21}
+      className={
+        post.saved
+          ? 'fill-white text-white'
+          : 'text-white'
+      }
+    />
+  </span>
+
+  <span className="text-xs font-semibold">
+    {post.saves_count}
+  </span>
+</button>
 
               {/*
                * PARTILHAR
