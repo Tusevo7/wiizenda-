@@ -732,7 +732,7 @@ useEffect(() => {
           data,
           error,
         } = await supabase
-          .from('community_post_saves')
+          .from('community_saves')
           .select(
             'post_id, user_id',
           )
@@ -1270,7 +1270,7 @@ async function toggleLike(post: Post) {
     try {
       if (wasSaved) {
         const { error } = await supabase
-          .from('community_post_saves')
+          .from('community_saves')
           .delete()
           .eq('post_id', post.id)
           .eq('user_id', userId)
@@ -1278,7 +1278,7 @@ async function toggleLike(post: Post) {
         if (error) throw error
       } else {
         const { error } = await supabase
-          .from('community_post_saves')
+          .from('community_saves')
           .insert({
             post_id: post.id,
             user_id: userId,
@@ -1461,7 +1461,7 @@ async function openComments(post: Post) {
     setCommentsLoading(false)
   }
 }
-/*
+/*/*
  * ============================================================
  * SHARE
  * ============================================================
@@ -1522,12 +1522,6 @@ async function copyLink() {
     `${window.location.origin}/review#review-post-${post.id}`
 
   try {
-    /*
-     * ========================================================
-     * 1. Clipboard API
-     * ========================================================
-     */
-
     if (
       navigator.clipboard &&
       typeof navigator.clipboard.writeText === 'function'
@@ -1537,12 +1531,6 @@ async function copyLink() {
       closeShare()
       return
     }
-
-    /*
-     * ========================================================
-     * 2. Fallback para browsers sem Clipboard API
-     * ========================================================
-     */
 
     const textarea =
       document.createElement('textarea')
@@ -1588,12 +1576,6 @@ async function copyLink() {
       error,
     )
 
-    /*
-     * ========================================================
-     * 3. Partilha nativa
-     * ========================================================
-     */
-
     if (
       typeof navigator !== 'undefined' &&
       typeof navigator.share === 'function'
@@ -1613,10 +1595,6 @@ async function copyLink() {
 
         closeShare()
       } catch (shareError) {
-        /*
-         * O utilizador pode cancelar
-         * a partilha sem ser um erro.
-         */
         console.debug(
           'Partilha cancelada:',
           shareError,
