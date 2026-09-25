@@ -67,11 +67,11 @@ export default function ProvinciasPage() {
       <main className="min-h-screen bg-white px-5 py-8 text-black md:px-10">
         <div className="mx-auto max-w-7xl">
           <button
-            onClick={() => window.history.back()}
-            className="mb-8 flex items-center gap-2 text-sm font-medium text-black/60 transition hover:text-[#FF5A1F]"
-          >
-            ← Voltar
-          </button>
+  onClick={() => window.location.href = '/'}
+  className="mb-8 flex items-center gap-2 text-sm font-medium text-black/60 transition hover:text-[#FF5A1F]"
+>
+  ← Voltar
+</button>
 
           <div className="py-20 text-center">
             <p className="text-sm uppercase tracking-[0.25em] text-black/40">
