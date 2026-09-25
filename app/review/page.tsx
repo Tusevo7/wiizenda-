@@ -54,7 +54,7 @@ type Comment = {
   id: string
   post_id: string
   user_id: string
-  content: string
+  comment: string
   created_at: string
   user_name: string
   user_avatar: string | null
@@ -119,6 +119,25 @@ export default function ReviewPage() {
   const shouldResumeAudioRef = useRef(false)
 
   const currentUserIdRef = useRef<string | null>(null)
+
+  // Evita cliques duplicados enquanto uma operação está em andamento.
+  const likeBusyRef = useRef<Set<string>>(new Set())
+  const saveBusyRef = useRef<Set<string>>(new Set())
+
+  // Obtém sempre a sessão atual do Supabase.
+  // Não dependemos apenas do valor carregado no primeiro render.
+  async function getCurrentUserId() {
+    const { data, error } = await supabase.auth.getUser()
+
+    if (error) {
+      console.error('Erro ao obter utilizador:', error)
+      return null
+    }
+
+    const userId = data.user?.id ?? null
+    currentUserIdRef.current = userId
+    return userId
+  }
 
   /*
    * ============================================================
@@ -683,7 +702,7 @@ useEffect(() => {
           data,
           error,
         } = await supabase
-          .from('community_post_likes')
+          .from('community_likes')
           .select(
             'post_id, user_id',
           )
@@ -726,49 +745,53 @@ useEffect(() => {
           saves = data ?? []
         }
       }
+/*
+ * ========================================================
+ * COMMENTS
+ * ========================================================
+ */
 
-      /*
-       * ========================================================
-       * COMMENTS
-       * ========================================================
-       */
+let allComments: {
+  id: string
+  post_id: string
+  user_id: string
+  comment: string
+  created_at: string
+}[] = []
 
-      let allComments: {
-        id: string
-        post_id: string
-        user_id: string
-        content: string
-        created_at: string
-      }[] = []
-
+{
+  const {
+    data,
+    error,
+  } = await supabase
+    .from('community_comments')
+    .select(`
+      id,
+      post_id,
+      user_id,
+      comment,
+      created_at
+    `)
+    .in(
+      'post_id',
+      postIds,
+    )
+    .order(
+      'created_at',
       {
-        const {
-          data,
-          error,
-        } = await supabase
-          .from('community_comments')
-          .select(`
-            id,
-            post_id,
-            user_id,
-            content,
-            created_at
-          `)
-          .in(
-            'post_id',
-            postIds,
-          )
-          .order(
-            'created_at',
-            {
-              ascending: true,
-            },
-          )
+        ascending: true,
+      },
+    )
 
-        if (!error) {
-          allComments = data ?? []
-        }
-      }
+  if (error) {
+    console.error(
+      'Erro ao carregar comentários:',
+      error,
+    )
+  } else {
+    allComments = data ?? []
+  }
+}
 
       /*
        * ========================================================
@@ -1146,108 +1169,74 @@ useEffect(() => {
    * ============================================================
    */
 
-  async function toggleLike(
-    post: Post,
-  ) {
-    const userId =
-      currentUserIdRef.current
+async function toggleLike(post: Post) {
+    const userId = await getCurrentUserId()
 
-    if (!userId) return
+    if (!userId) {
+      console.error('Utilizador não autenticado.')
+      return
+    }
 
-    const existing =
-      post.liked
+    if (likeBusyRef.current.has(post.id)) return
+    likeBusyRef.current.add(post.id)
 
+    const wasLiked = post.liked
+
+    // Atualização imediata da interface.
     setPosts((current) =>
       current.map((item) =>
         item.id === post.id
           ? {
               ...item,
-              liked: !existing,
-              likes_count:
-                Math.max(
-                  0,
-                  item.likes_count +
-                    (existing
-                      ? -1
-                      : 1),
-                ),
+              liked: !wasLiked,
+              likes_count: Math.max(
+                0,
+                item.likes_count + (wasLiked ? -1 : 1),
+              ),
             }
           : item,
       ),
     )
 
-    if (existing) {
-      const { error } =
-        await supabase
-          .from(
-            'community_post_likes',
-          )
+    try {
+      if (wasLiked) {
+        const { error } = await supabase
+          .from('community_likes')
           .delete()
-          .eq(
-            'post_id',
-            post.id,
-          )
-          .eq(
-            'user_id',
-            userId,
-          )
+          .eq('post_id', post.id)
+          .eq('user_id', userId)
 
-      if (error) {
-        console.error(error)
-
-        setPosts((current) =>
-          current.map(
-            (item) =>
-              item.id ===
-              post.id
-                ? {
-                    ...item,
-                    liked:
-                      true,
-                    likes_count:
-                      item.likes_count +
-                      1,
-                  }
-                : item,
-          ),
-        )
-      }
-    } else {
-      const { error } =
-        await supabase
-          .from(
-            'community_post_likes',
-          )
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from('community_likes')
           .insert({
-            post_id:
-              post.id,
-            user_id:
-              userId,
+            post_id: post.id,
+            user_id: userId,
           })
 
-      if (error) {
-        console.error(error)
-
-        setPosts((current) =>
-          current.map(
-            (item) =>
-              item.id ===
-              post.id
-                ? {
-                    ...item,
-                    liked:
-                      false,
-                    likes_count:
-                      Math.max(
-                        0,
-                        item.likes_count -
-                          1,
-                      ),
-                  }
-                : item,
-          ),
-        )
+        if (error) throw error
       }
+    } catch (error) {
+      console.error('Erro no like:', error)
+
+      // Reverter interface se Supabase falhar.
+      setPosts((current) =>
+        current.map((item) =>
+          item.id === post.id
+            ? {
+                ...item,
+                liked: wasLiked,
+                likes_count: Math.max(
+                  0,
+                  item.likes_count + (wasLiked ? 1 : -1),
+                ),
+              }
+            : item,
+        ),
+      )
+    } finally {
+      likeBusyRef.current.delete(post.id)
     }
   }
 
@@ -1257,358 +1246,413 @@ useEffect(() => {
    * ============================================================
    */
 
-  async function toggleSave(
-    post: Post,
-  ) {
-    const userId =
-      currentUserIdRef.current
+  async function toggleSave(post: Post) {
+    const userId = await getCurrentUserId()
 
-    if (!userId) return
+    if (!userId) {
+      console.error('Utilizador não autenticado.')
+      return
+    }
 
-    const existing =
-      post.saved
+    if (saveBusyRef.current.has(post.id)) return
+    saveBusyRef.current.add(post.id)
+
+    const wasSaved = post.saved
 
     setPosts((current) =>
       current.map((item) =>
         item.id === post.id
-          ? {
-              ...item,
-              saved: !existing,
-            }
+          ? { ...item, saved: !wasSaved }
           : item,
       ),
     )
 
-    if (existing) {
-      const { error } =
-        await supabase
-          .from(
-            'community_post_saves',
-          )
+    try {
+      if (wasSaved) {
+        const { error } = await supabase
+          .from('community_post_saves')
           .delete()
-          .eq(
-            'post_id',
-            post.id,
-          )
-          .eq(
-            'user_id',
-            userId,
-          )
+          .eq('post_id', post.id)
+          .eq('user_id', userId)
 
-      if (error) {
-        console.error(error)
-
-        setPosts((current) =>
-          current.map(
-            (item) =>
-              item.id ===
-              post.id
-                ? {
-                    ...item,
-                    saved:
-                      true,
-                  }
-                : item,
-          ),
-        )
-      }
-    } else {
-      const { error } =
-        await supabase
-          .from(
-            'community_post_saves',
-          )
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from('community_post_saves')
           .insert({
-            post_id:
-              post.id,
-            user_id:
-              userId,
+            post_id: post.id,
+            user_id: userId,
           })
 
-      if (error) {
-        console.error(error)
-
-        setPosts((current) =>
-          current.map(
-            (item) =>
-              item.id ===
-              post.id
-                ? {
-                    ...item,
-                    saved:
-                      false,
-                  }
-                : item,
-          ),
-        )
+        if (error) throw error
       }
-    }
-  }
+    } catch (error) {
+      console.error('Erro ao guardar:', error)
 
-  /*
-   * ============================================================
-   * COMENTÁRIOS
-   * ============================================================
-   */
-
-  async function openComments(
-    post: Post,
-  ) {
-    setSelectedPost(post)
-    setCommentsOpen(true)
-    setCommentsLoading(true)
-
-    try {
-      const {
-        data,
-        error,
-      } = await supabase
-        .from(
-          'community_comments',
-        )
-        .select(`
-          id,
-          post_id,
-          user_id,
-          content,
-          created_at
-        `)
-        .eq(
-          'post_id',
-          post.id,
-        )
-        .order(
-          'created_at',
-          {
-            ascending: true,
-          },
-        )
-
-      if (error) {
-        console.error(error)
-        return
-      }
-
-      const commentRows =
-        data ?? []
-
-      const userIds =
-        Array.from(
-          new Set(
-            commentRows.map(
-              (comment) =>
-                comment.user_id,
-            ),
-          ),
-        )
-
-      let commentProfiles:
-        Profile[] = []
-
-      if (userIds.length) {
-        const {
-          data: profilesData,
-        } = await supabase
-          .from('profiles')
-          .select(
-            'id, full_name, avatar_url, role',
-          )
-          .in(
-            'id',
-            userIds,
-          )
-
-        commentProfiles =
-          profilesData ?? []
-      }
-
-      const profileMap =
-        new Map(
-          commentProfiles.map(
-            (profile) => [
-              profile.id,
-              profile,
-            ],
-          ),
-        )
-
-      setComments(
-        commentRows.map(
-          (comment) => {
-            const profile =
-              profileMap.get(
-                comment.user_id,
-              )
-
-            return {
-              id: comment.id,
-              post_id:
-                comment.post_id,
-              user_id:
-                comment.user_id,
-              content:
-                comment.content,
-              created_at:
-                comment.created_at,
-              user_name:
-                profile?.full_name ||
-                'Utilizador',
-              user_avatar:
-                profile?.avatar_url ??
-                null,
-            }
-          },
+      setPosts((current) =>
+        current.map((item) =>
+          item.id === post.id
+            ? { ...item, saved: wasSaved }
+            : item,
         ),
       )
     } finally {
-      setCommentsLoading(false)
+      saveBusyRef.current.delete(post.id)
     }
   }
 
-  async function addComment() {
-    const userId =
-      currentUserIdRef.current
+/*
+ * ============================================================
+ * COMENTÁRIOS
+ * ============================================================
+ */
+async function openComments(post: Post) {
+  setSelectedPost(post)
+  setComments([])
+  setCommentsOpen(true)
+  setCommentsLoading(true)
 
-    if (
-      !userId ||
-      !selectedPost ||
-      !commentText.trim()
-    ) {
-      return
-    }
-
-    const text =
-      commentText.trim()
-
-    setCommentText('')
-
+  try {
     const {
       data,
       error,
     } = await supabase
-      .from(
-        'community_comments',
-      )
-      .insert({
-        post_id:
-          selectedPost.id,
-        user_id:
-          userId,
-        content: text,
+      .from('community_comments')
+      .select(`
+        id,
+        post_id,
+        user_id,
+        comment,
+        created_at
+      `)
+      .eq('post_id', post.id)
+      .order('created_at', {
+        ascending: true,
       })
-      .select(
-        'id, post_id, user_id, content, created_at',
-      )
-      .single()
 
     if (error) {
-      console.error(error)
-      setCommentText(text)
+      console.error(
+        'Erro ao carregar comentários:',
+        error,
+      )
       return
     }
 
-    const {
-      data: profile,
-    } = await supabase
-      .from('profiles')
-      .select(
-        'full_name, avatar_url',
-      )
-      .eq('id', userId)
-      .maybeSingle()
+    const commentRows = data ?? []
 
-    const newComment: Comment =
-      {
-        id: data.id,
-        post_id:
-          data.post_id,
-        user_id:
-          data.user_id,
-        content:
-          data.content,
-        created_at:
-          data.created_at,
-        user_name:
-          profile?.full_name ||
-          'Utilizador',
-        user_avatar:
-          profile?.avatar_url ??
-          null,
-      }
-
-    setComments(
-      (current) => [
-        ...current,
-        newComment,
-      ],
-    )
-
-    setPosts((current) =>
-      current.map((post) =>
-        post.id ===
-        selectedPost.id
-          ? {
-              ...post,
-              comments_count:
-                post.comments_count +
-                1,
-            }
-          : post,
+    const userIds = Array.from(
+      new Set(
+        commentRows.map(
+          (item) => item.user_id,
+        ),
       ),
     )
-  }
 
-  /*
-   * ============================================================
-   * SHARE
-   * ============================================================
-   */
+    let commentProfiles: Profile[] = []
 
-  function openShare(
-    post: Post,
-  ) {
-    setSharePost(post)
-    setShareOpen(true)
-    setMenuOpen(null)
-  }
+    if (userIds.length > 0) {
+      const {
+        data: profilesData,
+        error: profilesError,
+      } = await supabase
+        .from('profiles')
+        .select(
+          'id, full_name, avatar_url, role',
+        )
+        .in('id', userIds)
 
-  function closeShare() {
-    setShareOpen(false)
-    setSharePost(null)
-  }
+      if (profilesError) {
+        console.error(
+          'Erro ao carregar perfis:',
+          profilesError,
+        )
+      }
 
-  async function copyLink() {
-    if (!sharePost) return
-
-    const url =
-      `${window.location.origin}/review#review-post-${sharePost.id}`
-
-    try {
-      await navigator.clipboard.writeText(
-        url,
-      )
-
-      setShareOpen(false)
-      setSharePost(null)
-    } catch {
-      console.error(
-        'Não foi possível copiar o link.',
-      )
+      commentProfiles =
+        profilesData ?? []
     }
-  }
 
-  function openMedia() {
-    if (!sharePost) return
+    // Buscar agências pertencentes aos utilizadores
+    let agencyRows: {
+      id: string
+      owner_id: string
+      name: string
+      logo_url: string | null
+    }[] = []
 
-    window.open(
-      sharePost.media_url,
-      '_blank',
-      'noopener,noreferrer',
+    if (userIds.length > 0) {
+      const {
+        data: agenciesData,
+        error: agenciesError,
+      } = await supabase
+        .from('agencies')
+        .select(`
+          id,
+          owner_id,
+          name,
+          logo_url
+        `)
+        .in('owner_id', userIds)
+
+      if (agenciesError) {
+        console.error(
+          'Erro ao carregar agências:',
+          agenciesError,
+        )
+      }
+
+      agencyRows =
+        agenciesData ?? []
+    }
+
+    const profileMap = new Map(
+      commentProfiles.map(
+        (profile) => [
+          profile.id,
+          profile,
+        ],
+      ),
     )
 
-    closeShare()
+    const agencyMap = new Map(
+      agencyRows.map(
+        (agency) => [
+          agency.owner_id,
+          agency,
+        ],
+      ),
+    )
+
+    setComments(
+      commentRows.map((item) => {
+        const profile =
+          profileMap.get(
+            item.user_id,
+          )
+
+        const agency =
+          agencyMap.get(
+            item.user_id,
+          )
+
+        return {
+          id: item.id,
+          post_id: item.post_id,
+          user_id: item.user_id,
+
+          comment: item.comment,
+
+          created_at:
+            item.created_at,
+
+          user_name:
+            agency?.name ||
+            profile?.full_name ||
+            'Utilizador',
+
+          user_avatar:
+            agency?.logo_url ||
+            profile?.avatar_url ||
+            null,
+        }
+      }),
+    )
+  } finally {
+    setCommentsLoading(false)
+  }
+}
+/*
+ * ============================================================
+ * SHARE
+ * ============================================================
+ */
+
+function openShare(post: Post) {
+  setSharePost(post)
+  setShareOpen(true)
+  setMenuOpen(null)
+}
+
+function closeShare() {
+  setShareOpen(false)
+  setSharePost(null)
+}
+
+/*
+ * ============================================================
+ * PARTILHAR NO WHATSAPP
+ * ============================================================
+ */
+
+function shareWhatsApp() {
+  if (!sharePost) return
+
+  const post = sharePost
+
+  const url =
+    `${window.location.origin}/review#review-post-${post.id}`
+
+  const text =
+    `${post.caption || 'Veja esta publicação no Wizenda.'}\n\n${url}`
+
+  const whatsappUrl =
+    `https://wa.me/?text=${encodeURIComponent(text)}`
+
+  window.open(
+    whatsappUrl,
+    '_blank',
+    'noopener,noreferrer',
+  )
+
+  closeShare()
+}
+
+/*
+ * ============================================================
+ * COPIAR LINK
+ * ============================================================
+ */
+
+async function copyLink() {
+  if (!sharePost) return
+
+  const post = sharePost
+
+  const url =
+    `${window.location.origin}/review#review-post-${post.id}`
+
+  try {
+    /*
+     * ========================================================
+     * 1. Clipboard API
+     * ========================================================
+     */
+
+    if (
+      navigator.clipboard &&
+      typeof navigator.clipboard.writeText === 'function'
+    ) {
+      await navigator.clipboard.writeText(url)
+
+      closeShare()
+      return
+    }
+
+    /*
+     * ========================================================
+     * 2. Fallback para browsers sem Clipboard API
+     * ========================================================
+     */
+
+    const textarea =
+      document.createElement('textarea')
+
+    textarea.value = url
+
+    textarea.setAttribute(
+      'readonly',
+      '',
+    )
+
+    textarea.style.position = 'fixed'
+    textarea.style.left = '-9999px'
+    textarea.style.top = '0'
+    textarea.style.opacity = '0'
+
+    document.body.appendChild(textarea)
+
+    textarea.focus()
+    textarea.select()
+
+    textarea.setSelectionRange(
+      0,
+      textarea.value.length,
+    )
+
+    const copied =
+      document.execCommand('copy')
+
+    document.body.removeChild(textarea)
+
+    if (copied) {
+      closeShare()
+      return
+    }
+
+    throw new Error(
+      'Não foi possível copiar o link.',
+    )
+  } catch (error) {
+    console.error(
+      'Erro ao copiar link:',
+      error,
+    )
+
+    /*
+     * ========================================================
+     * 3. Partilha nativa
+     * ========================================================
+     */
+
+    if (
+      typeof navigator !== 'undefined' &&
+      typeof navigator.share === 'function'
+    ) {
+      try {
+        await navigator.share({
+          title:
+            post.caption ||
+            'Wizenda',
+
+          text:
+            post.caption ||
+            'Veja esta publicação no Wizenda.',
+
+          url,
+        })
+
+        closeShare()
+      } catch (shareError) {
+        /*
+         * O utilizador pode cancelar
+         * a partilha sem ser um erro.
+         */
+        console.debug(
+          'Partilha cancelada:',
+          shareError,
+        )
+      }
+
+      return
+    }
+
+    console.error(
+      'Este navegador não suporta cópia nem partilha nativa.',
+    )
+  }
+}
+
+/*
+ * ============================================================
+ * ABRIR MÍDIA
+ * ============================================================
+ */
+
+function openMedia() {
+  if (!sharePost) return
+
+  if (!sharePost.media_url) {
+    return
   }
 
+  window.open(
+    sharePost.media_url,
+    '_blank',
+    'noopener,noreferrer',
+  )
+
+  closeShare()
+}
   /*
    * ============================================================
    * DELETE
@@ -2145,32 +2189,23 @@ useEffect(() => {
                 </span>
               </button>
 
-              {/*
-               * COMENTÁRIOS
-               */}
+             {/* 
+ * COMENTÁRIOS 
+ */}
+<button
+  type="button"
+  onClick={() => openComments(post)}
+  className="flex flex-col items-center gap-1 text-white"
+  aria-label="Comentários"
+>
+  <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/30 backdrop-blur-xl transition hover:bg-black/50">
+    <MessageCircle size={21} />
+  </span>
 
-              <button
-                type="button"
-                onClick={() =>
-                  openComments(
-                    post,
-                  )
-                }
-                className="flex flex-col items-center gap-1 text-white"
-                aria-label="Comentários"
-              >
-                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/30 backdrop-blur-xl transition hover:bg-black/50">
-                  <MessageCircle
-                    size={21}
-                  />
-                </span>
-
-                <span className="text-[10px] font-medium drop-shadow">
-                  {
-                    post.comments_count
-                  }
-                </span>
-              </button>
+  <span className="text-[10px] font-medium drop-shadow">
+    {post.comments_count}
+  </span>
+</button>
 
               {/*
                * GUARDAR
@@ -2430,7 +2465,7 @@ useEffect(() => {
 
                             <p className="mt-1 text-sm leading-5 text-gray-600">
                               {
-                                comment.content
+                                comment.comment
                               }
                             </p>
                           </div>
