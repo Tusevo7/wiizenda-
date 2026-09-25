@@ -1,6 +1,11 @@
 'use client'
 
-import { FormEvent, useEffect, useRef, useState } from 'react'
+import {
+  FormEvent,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 import Link from 'next/link'
 import {
   ArrowLeft,
@@ -15,6 +20,8 @@ import {
   Sparkles,
   Utensils,
 } from 'lucide-react'
+
+import { createClient } from '@/lib/supabase/client'
 
 type Experience = {
   id: string
@@ -72,7 +79,7 @@ function ExperienceCard({
   experience: Experience
 }) {
   return (
-    <div className="mt-4 w-full max-w-[430px] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:shadow-md">
+    <div className="mt-4 w-full max-w-[430px] overflow-hidden rounded-2xl border border-gray-200 bg-white text-left shadow-sm transition hover:shadow-md">
       <Link href={`/experience/${experience.slug}`}>
         <div className="relative aspect-[16/9] w-full overflow-hidden bg-gray-100">
           {experience.cover_image ? (
@@ -94,21 +101,21 @@ function ExperienceCard({
 
           <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/55 to-transparent" />
 
-          <div className="absolute bottom-3 left-4 right-4">
+          <div className="absolute bottom-3 left-4 right-4 text-left">
             <h3 className="truncate text-base font-bold text-white drop-shadow">
               {experience.title}
             </h3>
           </div>
         </div>
 
-        <div className="p-4">
+        <div className="p-4 text-left">
           <div className="flex items-start gap-2">
             <MapPin
               size={15}
               className="mt-0.5 shrink-0 text-[#FF5A1F]"
             />
 
-            <div className="min-w-0">
+            <div className="min-w-0 text-left">
               <p className="truncate text-sm font-medium text-gray-800">
                 {experience.location ||
                   experience.city ||
@@ -149,6 +156,9 @@ export default function SobaPage() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
 
+  const [userName, setUserName] =
+    useState('Tusevo')
+
   const textareaRef =
     useRef<HTMLTextAreaElement | null>(null)
 
@@ -167,13 +177,62 @@ export default function SobaPage() {
   const hasMessages = messages.length > 0
 
   /*
-   * Scroll inteligente.
-   *
-   * Não usamos scrollIntoView com "smooth" durante o streaming.
-   * Isso criava várias animações simultâneas e fazia o scroll travar.
+   * CARREGA O NOME DO UTILIZADOR
    */
+  useEffect(() => {
+    async function loadUserProfile() {
+      try {
+        const supabase = createClient()
+
+        const {
+          data: {
+            user,
+          },
+        } = await supabase.auth.getUser()
+
+        if (!user) return
+
+        const {
+          data: profile,
+          error,
+        } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', user.id)
+          .single()
+
+        if (error) {
+          console.error(
+            'Erro ao carregar perfil:',
+            error,
+          )
+          return
+        }
+
+        if (
+          profile?.full_name &&
+          profile.full_name.trim()
+        ) {
+          setUserName(
+            profile.full_name.trim(),
+          )
+        }
+      } catch (error) {
+        console.error(
+          'Erro ao carregar nome do utilizador:',
+          error,
+        )
+      }
+    }
+
+    loadUserProfile()
+  }, [])
+
   function scrollToBottom(force = false) {
-    if (!force && !shouldAutoScrollRef.current) {
+    if (
+      !force &&
+      !shouldAutoScrollRef.current
+    ) {
       return
     }
 
@@ -199,11 +258,6 @@ export default function SobaPage() {
       })
   }
 
-  /*
-   * Detecta se o utilizador está perto do fundo.
-   * Se ele subir para ler uma mensagem antiga,
-   * a Soba deixa de puxar o scroll automaticamente.
-   */
   function handleMessagesScroll() {
     const container =
       messagesContainerRef.current
@@ -271,10 +325,6 @@ export default function SobaPage() {
     const assistantMessageId =
       crypto.randomUUID()
 
-    /*
-     * Quando o utilizador envia uma nova mensagem,
-     * voltamos automaticamente para o fundo.
-     */
     shouldAutoScrollRef.current = true
 
     setMessages((current) => [
@@ -296,10 +346,6 @@ export default function SobaPage() {
         'auto'
     }
 
-    /*
-     * Deixa o browser terminar o primeiro render
-     * antes de levar o utilizador ao fundo.
-     */
     requestAnimationFrame(() => {
       scrollToBottom(true)
     })
@@ -383,11 +429,6 @@ export default function SobaPage() {
       let receivedExperiences: Experience[] =
         []
 
-      /*
-       * Em vez de atualizar o React a cada token,
-       * acumulamos e atualizamos no máximo
-       * algumas vezes por segundo.
-       */
       let pendingUpdate = false
 
       const updateAssistant = () => {
@@ -452,10 +493,6 @@ export default function SobaPage() {
               accumulated +=
                 event.content
 
-              /*
-               * Atualiza a interface sem
-               * sobrecarregar o React.
-               */
               updateAssistant()
             }
 
@@ -480,10 +517,6 @@ export default function SobaPage() {
                 ),
               )
 
-              /*
-               * Os cards podem aumentar
-               * bastante a altura da conversa.
-               */
               scrollToBottom()
             }
           } catch {
@@ -492,9 +525,6 @@ export default function SobaPage() {
         }
       }
 
-      /*
-       * Processa o último fragmento.
-       */
       buffer += decoder.decode()
 
       if (buffer.trim()) {
@@ -521,9 +551,6 @@ export default function SobaPage() {
         }
       }
 
-      /*
-       * Render final.
-       */
       setMessages((current) =>
         current.map((message) =>
           message.id ===
@@ -539,10 +566,6 @@ export default function SobaPage() {
         ),
       )
 
-      /*
-       * Garante que o último conteúdo
-       * fique visível.
-       */
       requestAnimationFrame(() => {
         scrollToBottom(true)
       })
@@ -618,7 +641,7 @@ export default function SobaPage() {
     <main className="min-h-screen bg-[#FAFAFA] text-[#111111]">
       {/* HEADER */}
       <header className="fixed inset-x-0 top-0 z-50 bg-[#FAFAFA]/90 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-5 sm:px-8">
+        <div className="flex h-16 w-full items-center justify-between px-5 sm:px-8">
           <Link
             href="/"
             className="flex h-9 items-center gap-2 rounded-xl px-2 text-sm font-medium text-gray-500 transition hover:bg-white hover:text-gray-900"
@@ -630,7 +653,7 @@ export default function SobaPage() {
             </span>
           </Link>
 
-          <div className="absolute left-1/2 flex -translate-x-1/2 items-center gap-2">
+          <div className="absolute left-5 flex items-center gap-2 sm:left-8">
             <div className="h-7 w-7 overflow-hidden rounded-full">
               <img
                 src="/soba-avatar.png"
@@ -653,7 +676,7 @@ export default function SobaPage() {
             <button
               type="button"
               onClick={clearConversation}
-              className="flex h-9 items-center gap-2 rounded-xl px-3 text-xs font-medium text-gray-500 transition hover:bg-white hover:text-gray-900"
+              className="ml-auto flex h-9 items-center gap-2 rounded-xl px-3 text-xs font-medium text-gray-500 transition hover:bg-white hover:text-gray-900"
             >
               <Plus size={15} />
 
@@ -662,7 +685,7 @@ export default function SobaPage() {
               </span>
             </button>
           ) : (
-            <div className="w-9" />
+            <div className="ml-auto w-9" />
           )}
         </div>
       </header>
@@ -671,10 +694,10 @@ export default function SobaPage() {
       <div
         ref={messagesContainerRef}
         onScroll={handleMessagesScroll}
-        className="min-h-screen overflow-y-auto px-5 pb-36 pt-16 sm:px-8"
+        className="min-h-screen overflow-y-auto px-5 pb-36 pt-16 text-left sm:px-8"
       >
         {!hasMessages ? (
-          <div className="flex min-h-[calc(100vh-170px)] flex-col items-center justify-center">
+          <div className="flex min-h-[calc(100vh-170px)] flex-col items-start justify-center">
             <div className="soba-avatar mb-7 h-20 w-20 overflow-hidden rounded-full bg-white shadow-sm ring-1 ring-gray-200">
               <img
                 src="/soba-avatar.png"
@@ -683,28 +706,17 @@ export default function SobaPage() {
               />
             </div>
 
-            <div className="text-center">
-              <div className="mb-3 flex items-center justify-center gap-1.5">
-                <span className="text-xs font-medium uppercase tracking-[0.18em] text-gray-400">
-                  Inteligência da Wizenda
-                </span>
-
-                <Sparkles
-                  size={12}
-                  className="text-[#FF5A1F]"
-                />
-              </div>
-
-              <h1 className="text-4xl font-semibold tracking-[-0.035em] sm:text-5xl">
-                Olá, Tusevo 👋
+            <div className="text-left">
+              <h1 className="text-left text-3xl font-semibold tracking-[-0.035em] sm:text-3xl">
+                Olá, {userName} 👋
               </h1>
 
-              <p className="mt-3 text-base text-gray-400 sm:text-lg">
+              <p className="mt-3 text-left text-base text-gray-400 sm:text-lg">
                 Como posso ajudar-te hoje?
               </p>
             </div>
 
-            <div className="mt-9 flex w-full max-w-md flex-col items-center gap-1">
+            <div className="mt-9 flex w-full max-w-md flex-col items-start gap-1">
               {suggestions.map(
                 ({
                   label,
@@ -720,7 +732,7 @@ export default function SobaPage() {
                         text,
                       )
                     }
-                    className="group flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-center transition hover:bg-white"
+                    className="group flex w-full items-center justify-start gap-2 rounded-xl px-4 py-2.5 text-left transition hover:bg-white"
                   >
                     <Icon
                       size={15}
@@ -736,19 +748,19 @@ export default function SobaPage() {
             </div>
           </div>
         ) : (
-          <div className="mx-auto max-w-2xl pt-10">
+          <div className="w-full max-w-2xl pt-10">
             <div className="space-y-9">
               {messages.map((message) => (
                 <div
                   key={message.id}
                   className={
                     message.role === 'user'
-                      ? 'flex justify-end'
-                      : 'flex justify-start'
+                      ? 'flex w-full justify-end text-right'
+                      : 'flex w-full justify-start text-left'
                   }
                 >
                   {message.role === 'user' ? (
-                    <div className="max-w-[82%] rounded-[20px] rounded-br-md bg-[#FF5A1F] px-4 py-3 text-sm leading-6 text-white">
+                    <div className="w-fit max-w-[82%] rounded-[20px] rounded-br-md bg-[#FF5A1F] px-4 py-3 text-right text-sm leading-6 text-white">
                       {message.content}
                     </div>
                   ) : (
@@ -761,7 +773,7 @@ export default function SobaPage() {
                         />
                       </div>
 
-                      <div className="min-w-0 flex-1">
+                      <div className="min-w-0 flex-1 text-left">
                         <div className="mb-1.5 flex items-center gap-1.5">
                           <span className="text-xs font-semibold text-gray-900">
                             Soba
@@ -774,11 +786,11 @@ export default function SobaPage() {
                         </div>
 
                         {message.content ? (
-                          <div className="whitespace-pre-wrap text-sm leading-7 text-gray-700">
+                          <div className="whitespace-pre-wrap text-left text-sm leading-7 text-gray-700">
                             {message.content}
                           </div>
                         ) : loading ? (
-                          <div className="flex items-center gap-2 pt-1 text-xs text-gray-400">
+                          <div className="flex items-center gap-2 pt-1 text-left text-xs text-gray-400">
                             <Loader2
                               size={14}
                               className="animate-spin text-[#FF5A1F]"
@@ -821,10 +833,10 @@ export default function SobaPage() {
       </div>
 
       {/* INPUT */}
-      <div className="fixed bottom-0 left-0 z-40 w-full bg-gradient-to-t from-[#FAFAFA] via-[#FAFAFA] to-transparent px-5 pb-5 pt-8 sm:px-8">
+      <div className="fixed bottom-0 left-0 z-40 w-full bg-gradient-to-t from-[#FAFAFA] via-[#FAFAFA] to-transparent px-5 pb-5 pt-8 text-left sm:px-8">
         <form
           onSubmit={sendMessage}
-          className="mx-auto w-full max-w-2xl"
+          className="w-full max-w-2xl"
         >
           <div className="flex items-end rounded-[22px] border border-gray-200 bg-white px-3 py-2 shadow-sm transition focus-within:border-orange-300 focus-within:shadow-md">
             <textarea
@@ -849,7 +861,7 @@ export default function SobaPage() {
                   }
                 }
               }}
-              className="max-h-[140px] min-h-[40px] flex-1 resize-none bg-transparent px-2 py-2.5 text-sm leading-6 outline-none placeholder:text-gray-400"
+              className="max-h-[140px] min-h-[40px] flex-1 resize-none bg-transparent px-2 py-2.5 text-left text-sm leading-6 outline-none placeholder:text-gray-400"
             />
 
             <button
@@ -880,7 +892,7 @@ export default function SobaPage() {
             </button>
           </div>
 
-          <p className="mt-2 text-center text-[10px] text-gray-400">
+          <p className="mt-2 text-left text-[10px] text-gray-400">
             A Soba pode cometer erros. Confirma informações importantes.
           </p>
         </form>
