@@ -164,10 +164,10 @@ async function addComment() {
     .insert({
       post_id: selectedPost.id,
       user_id: userId,
-      content: text,
+    Comment: text,
     })
     .select(
-      'id, post_id, user_id, content, created_at',
+      'id, post_id, user_id, Comment, created_at',
     )
     .single()
 
