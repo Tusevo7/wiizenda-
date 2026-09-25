@@ -115,7 +115,7 @@ export default function AdvertisementCarousel() {
             />
           )}
 
-          <div className="relative flex h-[120px] w-full items-end justify-start overflow-hidden px-4 py-4 sm:h-[300px] sm:px-10 sm:py-10">
+          <div className="relative flex h-[140px] w-full items-end justify-start overflow-hidden px-4 py-4 sm:h-[300px] sm:px-10 sm:py-10">
 
             {ad.button_text && ad.button_url && (
               <div className="relative z-10">

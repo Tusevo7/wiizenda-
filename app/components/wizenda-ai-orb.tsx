@@ -1,4 +1,3 @@
-
 'use client'
 
 import { motion } from 'framer-motion'
@@ -6,7 +5,7 @@ import { motion } from 'framer-motion'
 export default function WizendaAiOrb() {
   return (
     <motion.div
-      className="relative h-full w-full overflow-hidden rounded-full"
+      className="relative h-full w-full overflow-visible rounded-full"
       animate={{
         scale: [1, 1.04, 1],
       }}
@@ -88,7 +87,8 @@ export default function WizendaAiOrb() {
           background:
             'radial-gradient(circle, #8affbd 0%, #21ed78 35%, #00a957 65%, transparent 100%)',
           filter: 'blur(2px)',
-          boxShadow: '0 0 25px rgba(50,255,140,0.55)',
+          boxShadow:
+            '0 0 25px rgba(50,255,140,0.55)',
         }}
       />
 
@@ -118,7 +118,8 @@ export default function WizendaAiOrb() {
         <motion.span
           className="h-[28%] w-[9%] min-h-[13px] min-w-[5px] rounded-full bg-white"
           style={{
-            boxShadow: '0 0 10px rgba(255,255,255,0.95)',
+            boxShadow:
+              '0 0 10px rgba(255,255,255,0.95)',
           }}
           animate={{
             scaleY: [1, 1, 0.15, 1, 1],
@@ -134,7 +135,8 @@ export default function WizendaAiOrb() {
         <motion.span
           className="h-[28%] w-[9%] min-h-[13px] min-w-[5px] rounded-full bg-white"
           style={{
-            boxShadow: '0 0 10px rgba(255,255,255,0.95)',
+            boxShadow:
+              '0 0 10px rgba(255,255,255,0.95)',
           }}
           animate={{
             scaleY: [1, 1, 0.15, 1, 1],
@@ -157,6 +159,13 @@ export default function WizendaAiOrb() {
             'radial-gradient(circle at 50% 30%, rgba(255,255,255,0.22), transparent 35%)',
         }}
       />
+
+      {/* CARD SOBA IA */}
+      <div className="absolute left-[calc(100%+6px)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-xl border border-white/15 bg-black/70 px-2.5 py-1.5 shadow-lg backdrop-blur-md sm:left-[calc(100%+8px)]">
+  <span className="text-xs font-bold text-white">
+    Soba IA
+  </span>
+</div>
 
     </motion.div>
   )

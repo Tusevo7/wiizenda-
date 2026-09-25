@@ -10,6 +10,7 @@ import { createClient } from '@/lib/supabase/server'
 import AppShell from '@/app/components/app-shell'
 import ContactAgencyButton from '@/app/components/contact-agency-button'
 import ReviewForm from '@/app/components/review-form'
+import ExperienceMusic from '@/app/components/experience-music'
 
 type ExperiencePageProps = {
   params: Promise<{
@@ -39,6 +40,11 @@ export default async function ExperiencePage({
       province,
       city,
       location,
+      music_title,
+      music_artist,
+      music_url,
+      music_start_seconds,
+      music_duration_seconds,
       price,
       duration_hours,
       capacity,
@@ -186,9 +192,9 @@ export default async function ExperiencePage({
           </Link>
         </section>
 
-        {/* Imagem */}
+        {/* Imagem + Player de música */}
         <section className="mx-auto mt-5 max-w-7xl px-5 sm:px-6 lg:px-8">
-          <div className="overflow-hidden rounded-[2rem] bg-gray-100">
+          <div className="relative overflow-hidden rounded-[2rem] bg-gray-100">
             <img
               src={
                 experience.cover_image ||
@@ -197,6 +203,21 @@ export default async function ExperiencePage({
               alt={experience.title}
               className="h-[320px] w-full object-cover sm:h-[480px] lg:h-[560px]"
             />
+
+            {/* Player sobre a imagem */}
+            <div className="absolute top-4 left-4 right-4 z-20 sm:top-5 sm:left-5 sm:right-5">
+              <ExperienceMusic
+                musicTitle={experience.music_title}
+                musicArtist={experience.music_artist}
+                musicUrl={experience.music_url}
+                musicStartSeconds={
+                  experience.music_start_seconds
+                }
+                musicDurationSeconds={
+                  experience.music_duration_seconds
+                }
+              />
+            </div>
           </div>
         </section>
 
@@ -298,7 +319,7 @@ export default async function ExperiencePage({
                   Sobre esta experiência
                 </h2>
 
-                <p className="mt-4 max-w-3xl whitespace-pre-line leading-8 text-gray-600">
+                <p className="mt-4 max-w-3xl text-justify leading-8 text-gray-600">
                   {experience.description ||
                     'Esta experiência ainda não possui uma descrição.'}
                 </p>

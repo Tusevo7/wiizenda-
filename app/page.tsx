@@ -142,15 +142,7 @@ export default function Home() {
 
           <div className="mb-4 flex items-center justify-between">
 
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400">
-                Espaço comercial
-              </p>
-
-              <h2 className="mt-1 text-lg font-black text-gray-950">
-                Publicidade
-              </h2>
-            </div>
+       
 
             <span className="rounded-[4px] bg-gray-100 px-3 py-1 text-[10px] font-bold text-gray-500">
               Patrocinado
@@ -182,10 +174,10 @@ export default function Home() {
               <WizendaAiOrb />
             </div>
 
-            {/* LABEL */}
-            <div className="absolute -left-2 top-1/2 hidden -translate-x-full -translate-y-1/2 whitespace-nowrap rounded-full bg-gray-950 px-4 py-2 text-xs font-bold text-white shadow-xl sm:block">
-              Soba IA
-            </div>
+           {/* LABEL */}
+<div className="absolute -left-2 top-1/2 -translate-x-full -translate-y-1/2 whitespace-nowrap rounded-full bg-gray-950 px-4 py-2 text-xs font-bold text-white shadow-xl">
+  Soba IA
+</div>
 
           </div>
         </Link>
