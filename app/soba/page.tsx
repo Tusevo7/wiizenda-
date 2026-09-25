@@ -653,7 +653,7 @@ export default function SobaPage() {
             </span>
           </Link>
 
-          <div className="absolute left-5 flex items-center gap-2 sm:left-8">
+          <div className="absolute left-15 flex items-center gap-2 sm:left-8">
             <div className="h-7 w-7 overflow-hidden rounded-full">
               <img
                 src="/soba-avatar.png"
@@ -666,10 +666,6 @@ export default function SobaPage() {
               Soba
             </span>
 
-            <Sparkles
-              size={13}
-              className="text-[#FF5A1F]"
-            />
           </div>
 
           {hasMessages ? (
@@ -698,16 +694,10 @@ export default function SobaPage() {
       >
         {!hasMessages ? (
           <div className="flex min-h-[calc(100vh-170px)] flex-col items-start justify-center">
-            <div className="soba-avatar mb-7 h-20 w-20 overflow-hidden rounded-full bg-white shadow-sm ring-1 ring-gray-200">
-              <img
-                src="/soba-avatar.png"
-                alt="Soba IA"
-                className="h-full w-full object-cover"
-              />
-            </div>
+           
 
             <div className="text-left">
-              <h1 className="text-left text-3xl font-semibold tracking-[-0.035em] sm:text-3xl">
+              <h1 className="text-left text-2xl font-semibold tracking-[-0.035em]  sm:text-3xl">
                 Olá, {userName} 👋
               </h1>
 
