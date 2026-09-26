@@ -1,4 +1,3 @@
-
 'use client'
 
 import {
@@ -6,6 +5,8 @@ import {
   Building2,
   Eye,
   EyeOff,
+  Lock,
+  Phone,
   ShieldCheck,
   UserRound,
 } from 'lucide-react'
@@ -22,7 +23,9 @@ export default function LoginPage() {
   const [mode, setMode] =
     useState<LoginMode>('traveler')
 
-  const [email, setEmail] = useState('')
+  const [identifier, setIdentifier] =
+    useState('')
+
   const [password, setPassword] =
     useState('')
 
@@ -48,16 +51,27 @@ export default function LoginPage() {
 
     const supabase = createClient()
 
+    const value = identifier.trim()
+
+    const isEmail = value.includes('@')
+
     const { data, error } =
-      await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      })
+      await supabase.auth.signInWithPassword(
+        isEmail
+          ? {
+              email: value,
+              password,
+            }
+          : {
+              phone: value,
+              password,
+            },
+      )
 
     if (error) {
       setMessageType('error')
       setMessage(
-        'E-mail ou palavra-passe incorretos.',
+        'Número de telefone/e-mail ou palavra-passe incorretos.',
       )
       setLoading(false)
       return
@@ -127,233 +141,350 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#F7F7F7]">
-      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col px-5 py-7 sm:px-8">
+    <main className="min-h-screen bg-white">
 
-        {/* LOGO */}
+      {/* =====================================================
+          HERO / IMAGEM
+      ====================================================== */}
+      <section className="relative h-[42vh] min-h-[310px] overflow-hidden">
 
-        <Link
-          href="/"
-          className="flex w-fit items-center"
-        >
-          <span className="text-2xl font-black tracking-tight text-gray-950">
-            wizenda
-          </span>
+        {/* IMAGEM */}
+        <img
+          src="/image1.jpg"
+          alt="Paisagem de Angola"
+          className="absolute inset-0 h-full w-full object-cover"
+        />
 
-          <span className="ml-1 h-2.5 w-2.5 rounded-full bg-orange-500" />
-        </Link>
+        {/* OVERLAY */}
+        <div className="absolute inset-0 bg-gradient-to-b from-[#063B46]/65 via-[#063B46]/75 to-[#062F38]/95" />
 
-        {/* HEADER */}
+        {/* CONTEÚDO */}
+        <div className="relative z-10 flex h-full flex-col justify-between px-6 pb-16 pt-8">
 
-        <div className="mt-12">
-          <p className="text-sm font-semibold text-orange-500">
-            Bem-vindo de volta
-          </p>
-
-          <h1 className="mt-1 text-3xl font-black tracking-tight text-gray-950">
-            Entra na tua conta
-          </h1>
-
-          <p className="mt-2 text-sm text-gray-500">
-            Acede à Wizenda para continuar.
-          </p>
-        </div>
-
-        {/* SELETOR */}
-
-        <div className="mt-7 grid grid-cols-2 rounded-2xl bg-gray-100 p-1">
-          <button
-            type="button"
-            onClick={() =>
-              selectMode('traveler')
-            }
-            className={`flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold transition ${
-              mode === 'traveler'
-                ? 'bg-white text-gray-950 shadow-sm'
-                : 'text-gray-500'
-            }`}
+          {/* LOGO */}
+          <Link
+            href="/"
+            className="flex w-fit items-center"
           >
-            <UserRound size={17} />
-            Cliente
-          </button>
+            <span className="text-2xl font-black tracking-tight text-white">
+              wizenda
+            </span>
 
-          <button
-            type="button"
-            onClick={() =>
-              selectMode('agency')
-            }
-            className={`flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold transition ${
-              mode === 'agency'
-                ? 'bg-white text-gray-950 shadow-sm'
-                : 'text-gray-500'
-            }`}
-          >
-            <Building2 size={17} />
-            Agência
-          </button>
-        </div>
+            <span className="ml-1 h-2.5 w-2.5 rounded-full bg-orange-500" />
+          </Link>
 
-        {/* FORM */}
+          {/* TEXTO */}
+          <div className="max-w-md">
 
-        <form
-          onSubmit={handleLogin}
-          className="mt-7 space-y-5"
-        >
-          {/* EMAIL */}
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-orange-400">
+              Descobre Angola 🇦🇴
+            </p>
 
-          <div>
-            <label
-              htmlFor="email"
-              className="mb-2 block text-sm font-semibold text-gray-800"
-            >
-              E-mail
-            </label>
+            <h1 className="text-4xl font-black tracking-tight text-white">
+              Bem Vindo
+            </h1>
 
-            <input
-              id="email"
-              type="email"
-              placeholder="nome@exemplo.com"
-              value={email}
-              onChange={(event) =>
-                setEmail(event.target.value)
-              }
-              autoComplete="email"
-              required
-              className="h-12 w-full rounded-xl border border-gray-200 bg-white px-4 text-sm text-gray-950 outline-none transition placeholder:text-gray-400 focus:border-orange-500 focus:ring-4 focus:ring-orange-50"
-            />
+            <p className="mt-3 max-w-sm text-sm leading-6 text-white/80">
+              Descubra lugares, culturas e experiências num só app
+            </p>
+
           </div>
 
-          {/* PASSWORD */}
+        </div>
+      </section>
 
+
+      {/* =====================================================
+          FORMULÁRIO
+      ====================================================== */}
+      <section className="relative z-20 -mt-8 rounded-t-[32px] bg-white px-6 pb-10 pt-7">
+
+        <div className="mx-auto max-w-md">
+
+          {/* TÍTULO */}
           <div>
-            <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-2xl font-black tracking-tight text-orange-500">
+              Acesse a sua conta
+            </h2>
+
+            <p className="mt-1 text-sm text-gray-500">
+              Entre para continuar a sua experiência.
+            </p>
+          </div>
+
+
+          
+
+          {/* =================================================
+              FORM
+          ================================================== */}
+          <form
+            onSubmit={handleLogin}
+            className="mt-5 space-y-4"
+          >
+
+            {/* TELEFONE / EMAIL */}
+            <div>
+
               <label
-                htmlFor="password"
-                className="block text-sm font-semibold text-gray-800"
+                htmlFor="identifier"
+                className="mb-2 block text-sm font-semibold text-gray-800"
               >
-                Palavra-passe
+                Número de Telefone
               </label>
 
-              <Link
-                href="/forgot-password"
-                className="text-xs font-semibold text-orange-500"
+              <div
+                className="
+                  flex h-14 items-center gap-3
+                  rounded-xl
+                  border border-gray-200
+                  bg-white
+                  px-4
+                  transition
+                  focus-within:border-orange-500
+                  focus-within:ring-4
+                  focus-within:ring-orange-50
+                "
               >
-                Esqueceste?
-              </Link>
+
+                <Phone
+                  size={19}
+                  className="shrink-0 text-gray-400"
+                />
+
+                <input
+                  id="identifier"
+                  type="text"
+                  inputMode="tel"
+                  placeholder="Número de Telefone"
+                  value={identifier}
+                  onChange={(event) =>
+                    setIdentifier(
+                      event.target.value,
+                    )
+                  }
+                  autoComplete="tel"
+                  required
+                  className="
+                    h-full min-w-0 flex-1
+                    bg-transparent
+                    text-sm text-gray-950
+                    outline-none
+                    placeholder:text-gray-400
+                  "
+                />
+
+              </div>
+
             </div>
 
-            <div className="relative">
-              <input
-                id="password"
-                type={
-                  showPassword
-                    ? 'text'
-                    : 'password'
-                }
-                placeholder="A tua palavra-passe"
-                value={password}
-                onChange={(event) =>
-                  setPassword(
-                    event.target.value,
-                  )
-                }
-                autoComplete="current-password"
-                required
-                className="h-12 w-full rounded-xl border border-gray-200 bg-white px-4 pr-12 text-sm text-gray-950 outline-none transition placeholder:text-gray-400 focus:border-orange-500 focus:ring-4 focus:ring-orange-50"
-              />
 
-              <button
-                type="button"
-                onClick={() =>
-                  setShowPassword(
-                    !showPassword,
-                  )
-                }
-                aria-label={
-                  showPassword
-                    ? 'Ocultar palavra-passe'
-                    : 'Mostrar palavra-passe'
-                }
-                className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-gray-400"
+            {/* PASSWORD */}
+            <div>
+
+              <div className="mb-2 flex items-center justify-between">
+
+                <label
+                  htmlFor="password"
+                  className="block text-sm font-semibold text-gray-800"
+                >
+                  Palavra-passe
+                </label>
+
+                <Link
+                  href="/forgot-password"
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+                >
+                  Esqueceu a Senha?
+                </Link>
+
+              </div>
+
+              <div
+                className="
+                  relative flex h-14
+                  items-center
+                  rounded-xl
+                  border border-gray-200
+                  bg-white
+                  px-4
+                  transition
+                  focus-within:border-orange-500
+                  focus-within:ring-4
+                  focus-within:ring-orange-50
+                "
               >
-                {showPassword ? (
-                  <EyeOff size={18} />
-                ) : (
-                  <Eye size={18} />
-                )}
-              </button>
+
+                <Lock
+                  size={19}
+                  className="mr-3 shrink-0 text-gray-400"
+                />
+
+                <input
+                  id="password"
+                  type={
+                    showPassword
+                      ? 'text'
+                      : 'password'
+                  }
+                  placeholder="Palavra-passe"
+                  value={password}
+                  onChange={(event) =>
+                    setPassword(
+                      event.target.value,
+                    )
+                  }
+                  autoComplete="current-password"
+                  required
+                  className="
+                    h-full min-w-0 flex-1
+                    bg-transparent
+                    pr-10
+                    text-sm text-gray-950
+                    outline-none
+                    placeholder:text-gray-400
+                  "
+                />
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowPassword(
+                      !showPassword,
+                    )
+                  }
+                  aria-label={
+                    showPassword
+                      ? 'Ocultar palavra-passe'
+                      : 'Mostrar palavra-passe'
+                  }
+                  className="
+                    absolute right-3
+                    flex h-8 w-8
+                    items-center justify-center
+                    rounded-lg
+                    text-gray-400
+                    transition
+                    hover:bg-gray-50
+                  "
+                >
+                  {showPassword ? (
+                    <EyeOff size={18} />
+                  ) : (
+                    <Eye size={18} />
+                  )}
+                </button>
+
+              </div>
+
             </div>
-          </div>
 
-          {/* MESSAGE */}
 
-          {message && (
-            <div
-              className={`rounded-xl border p-3 text-sm ${
-                messageType === 'success'
-                  ? 'border-green-100 bg-green-50 text-green-700'
-                  : 'border-red-100 bg-red-50 text-red-700'
-              }`}
-            >
-              {message}
-            </div>
-          )}
-
-          {/* BUTTON */}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="group flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading
-              ? 'A entrar...'
-              : mode === 'traveler'
-                ? 'Entrar'
-                : 'Entrar como agência'}
-
-            {!loading && (
-              <ArrowRight
-                size={17}
-                className="transition-transform group-hover:translate-x-0.5"
-              />
+            {/* MESSAGE */}
+            {message && (
+              <div
+                className={`rounded-xl border p-3 text-sm ${
+                  messageType === 'success'
+                    ? 'border-green-100 bg-green-50 text-green-700'
+                    : 'border-red-100 bg-red-50 text-red-700'
+                }`}
+              >
+                {message}
+              </div>
             )}
-          </button>
-        </form>
 
-        {/* REGISTO */}
 
-        <div className="mt-7 border-t border-gray-200 pt-6 text-center">
-          <p className="text-sm text-gray-500">
-            Ainda não tens uma conta?
-          </p>
-
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <Link
-              href="/register"
-              className="flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-3 text-xs font-bold text-gray-800"
+            {/* BOTÃO */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="
+                group
+                flex h-14 w-full
+                items-center justify-center
+                gap-2
+                rounded-xl
+                bg-orange-500
+                px-5
+                text-sm font-bold
+                text-white
+                shadow-sm
+                transition
+                hover:bg-orange-600
+                active:scale-[0.99]
+                disabled:cursor-not-allowed
+                disabled:opacity-60
+              "
             >
-              <UserRound size={15} />
-              Criar conta
-            </Link>
+              {loading
+                ? 'A entrar...'
+                : mode === 'traveler'
+                  ? 'Entrar'
+                  : 'Entrar como agência'}
 
-            <Link
-              href="/register?type=agency"
-              className="flex items-center justify-center gap-2 rounded-xl bg-orange-50 px-3 py-3 text-xs font-bold text-orange-600"
-            >
-              <Building2 size={15} />
-              Sou agência
-            </Link>
+              {!loading && (
+                <ArrowRight
+                  size={17}
+                  className="transition-transform group-hover:translate-x-0.5"
+                />
+              )}
+            </button>
+
+          </form>
+
+
+          {/* =================================================
+              REGISTO
+          ================================================== */}
+          <div className="mt-6 text-center">
+
+            <p className="text-sm text-gray-500">
+              Ainda não tem uma conta?
+            </p>
+
+            <div className="mt-3 flex items-center justify-center gap-1 text-sm">
+
+              <span className="text-gray-500">
+                Crie agora
+              </span>
+
+              <Link
+                href="/register"
+                className="font-bold text-blue-600 hover:text-blue-700"
+              >
+                Criar conta
+              </Link>
+
+            </div>
+
           </div>
+
+
+
+
+          {/* =================================================
+              SEGURANÇA
+          ================================================== */}
+          <div
+            className="
+              mt-7
+              flex
+              items-center
+              justify-center
+              gap-1.5
+              text-center
+              text-[11px]
+              text-gray-400
+            "
+          >
+            <ShieldCheck size={14} />
+            Dados protegidos pela Wizenda
+          </div>
+
         </div>
 
-        {/* SEGURANÇA */}
+      </section>
 
-        <div className="mt-auto flex justify-center gap-1.5 pt-8 text-center text-[11px] text-gray-400">
-          <ShieldCheck size={14} />
-          Dados protegidos pela Wizenda
-        </div>
-      </div>
     </main>
   )
 }
