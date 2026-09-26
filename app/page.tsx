@@ -1,3 +1,4 @@
+
 import Link from 'next/link'
 import {
   ChevronRight,
@@ -30,11 +31,13 @@ const categories: ExperienceCategory[] = [
 export default function Home() {
   return (
     <AppShell>
-      <main className="min-h-screen bg-[#FAFAFA] pb-8">
+      <main className="min-h-screen bg-[#FAFAFA] pb-6">
 
-        {/* DESKTOP INTRO */}
+        {/* =====================================================
+            INTRO DESKTOP
+        ====================================================== */}
         <section className="hidden bg-gray-950 sm:block">
-          <div className="mx-auto max-w-7xl px-6 py-16 lg:px-8">
+          <div className="mx-auto max-w-7xl px-6 py-14 lg:px-8">
             <div className="max-w-3xl">
 
               <span className="inline-flex rounded-full bg-orange-500/10 px-4 py-2 text-sm font-bold text-orange-400">
@@ -60,55 +63,114 @@ export default function Home() {
           </div>
         </section>
 
-        {/* PESQUISA */}
-        <section className="relative z-10 mx-auto max-w-4xl px-5 pt-5 sm:-mt-8 sm:px-6">
 
-          <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-white p-2 shadow-md shadow-gray-900/5">
+        {/* =====================================================
+            PESQUISA
+        ====================================================== */}
+        <section
+          className="
+            relative z-10 mx-auto
+            max-w-4xl
+            px-4 pt-3
+            sm:-mt-8 sm:px-6 sm:pt-5
+          "
+        >
+
+          <div
+            className="
+              flex items-center gap-2
+              rounded-xl
+              border border-gray-200
+              bg-white
+              p-1.5
+              shadow-sm
+              sm:gap-3 sm:rounded-2xl sm:p-2
+            "
+          >
 
             {/* ÍCONE */}
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gray-50">
+            <div
+              className="
+                flex h-10 w-10 shrink-0
+                items-center justify-center
+                rounded-lg bg-gray-50
+                sm:h-11 sm:w-11 sm:rounded-xl
+              "
+            >
               <Search
-                size={20}
+                size={18}
                 className="text-gray-500"
               />
             </div>
 
-            {/* CAMPO */}
+            {/* INPUT */}
             <div className="min-w-0 flex-1">
               <HomeSearch />
             </div>
 
-            {/* PESQUISAR */}
+            {/* BOTÃO */}
             <Link
               href="/explore"
               aria-label="Pesquisar"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-500 text-white transition hover:bg-orange-600 active:scale-95"
+              className="
+                flex h-10 w-10 shrink-0
+                items-center justify-center
+                rounded-lg
+                bg-orange-500
+                text-white
+                transition
+                hover:bg-orange-600
+                active:scale-95
+                sm:h-11 sm:w-11 sm:rounded-xl
+              "
             >
-              <Search size={19} />
+              <Search size={18} />
             </Link>
 
           </div>
 
         </section>
 
-        {/* CATEGORIAS */}
-        <section className="mx-auto max-w-7xl px-5 pt-8 sm:px-6 lg:px-8">
 
-          <div className="flex items-end justify-between">
+        {/* =====================================================
+            CATEGORIAS
+        ====================================================== */}
+        <section
+          className="
+            mx-auto max-w-7xl
+            px-4 pt-5
+            sm:px-6 sm:pt-8
+            lg:px-8
+          "
+        >
+
+          <div className="flex items-center justify-between">
 
             <div>
-              <h2 className="text-xl font-black tracking-tight text-gray-950 sm:text-2xl">
+              <h2
+                className="
+                  text-lg font-black
+                  tracking-tight text-gray-950
+                  sm:text-2xl
+                "
+              >
                 Explora por categoria
               </h2>
 
-              <p className="mt-1 text-sm text-gray-500">
+              <p className="mt-0.5 text-xs text-gray-500 sm:mt-1 sm:text-sm">
                 Encontra algo que combina contigo.
               </p>
             </div>
 
             <Link
               href="/explore"
-              className="hidden items-center gap-1 text-sm font-bold text-orange-500 transition hover:text-orange-600 sm:flex"
+              className="
+                hidden items-center gap-1
+                text-sm font-bold
+                text-orange-500
+                transition hover:text-orange-600
+                sm:flex
+              "
             >
               Ver tudo
               <ChevronRight size={16} />
@@ -116,7 +178,17 @@ export default function Home() {
 
           </div>
 
-          <div className="mt-5 flex gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+
+          {/* CATEGORIAS */}
+          <div
+            className="
+              mt-3 flex gap-2
+              overflow-x-auto pb-1
+              [scrollbar-width:none]
+              [&::-webkit-scrollbar]:hidden
+              sm:mt-5 sm:gap-3 sm:pb-2
+            "
+          >
 
             {categories.map(
               (category, index) => (
@@ -131,33 +203,56 @@ export default function Home() {
           </div>
 
         </section>
+{/* =====================================================
+    EXPERIÊNCIAS
+====================================================== */}
+<section className="pt-3 sm:pt-6">
+  <FeaturedExperiences />
+</section>
 
-        {/* FEED DE EXPERIÊNCIAS */}
-        <section className="pt-9">
-          <FeaturedExperiences />
-        </section>
 
-        {/* PUBLICIDADE DINÂMICA */}
-        <section className="mx-auto max-w-7xl px-5 pt-2 sm:px-6 lg:px-8">
+{/* =====================================================
+    PUBLICIDADE
+====================================================== */}
+<section
+  className="
+    mx-auto max-w-7xl
+    px-4
+    pt-1
+    sm:px-6
+    sm:pt-5
+    lg:px-8
+  "
+>
+  <div className="mb-1.5 flex items-center justify-between sm:mb-3">
+    <span
+      className="
+        rounded-[4px]
+        bg-gray-100
+        px-2 py-1
+        text-[9px]
+        font-bold
+        text-gray-500
+        sm:px-3 sm:text-[10px]
+      "
+    >
+      Patrocinado
+    </span>
+  </div>
 
-          <div className="mb-4 flex items-center justify-between">
+  <div className="overflow-hidden rounded-xl sm:rounded-2xl">
+    <AdvertisementCarousel />
+  </div>
+</section>
 
-       
 
-            <span className="rounded-[4px] bg-gray-100 px-3 py-1 text-[10px] font-bold text-gray-500">
-              Patrocinado
-            </span>
+{/* =====================================================
+    FIM DE SEMANA
+====================================================== */}
+<section className="pt-5 sm:pt-8">
+  <WeekendPlaces />
+</section>
 
-          </div>
-
-          <AdvertisementCarousel />
-
-        </section>
-
-        {/* =====================================================
-            LUGARES PARA O FIM DE SEMANA
-        ====================================================== */}
-        <WeekendPlaces />
 
         {/* =====================================================
             SOBA IA
@@ -165,21 +260,62 @@ export default function Home() {
         <Link
           href="/soba"
           aria-label="Abrir Soba IA"
-          className="group fixed bottom-24 right-5 z-[9999] transition-transform duration-300 hover:-translate-y-1 active:scale-95 sm:bottom-24 sm:right-8"
+          className="
+            group fixed
+            bottom-20 right-4
+            z-[9999]
+            transition-transform
+            duration-300
+            hover:-translate-y-1
+            active:scale-95
+            sm:bottom-24
+            sm:right-8
+          "
         >
+
           <div className="relative">
 
             {/* ORBE */}
-            <div className="h-[58px] w-[58px] overflow-hidden rounded-full shadow-2xl shadow-black/30 sm:h-[100px] sm:w-[100px]">
+            <div
+              className="
+                h-[56px] w-[56px]
+                overflow-hidden
+                rounded-full
+                shadow-2xl
+                shadow-black/30
+                sm:h-[100px]
+                sm:w-[100px]
+              "
+            >
               <WizendaAiOrb />
             </div>
 
-           {/* LABEL */}
-<div className="absolute -left-2 top-1/2 -translate-x-full -translate-y-1/2 whitespace-nowrap rounded-full bg-gray-950 px-4 py-2 text-xs font-bold text-white shadow-xl">
-  Soba IA
-</div>
+            {/* LABEL */}
+            <div
+              className="
+                absolute
+                -left-2
+                top-1/2
+                -translate-x-full
+                -translate-y-1/2
+                whitespace-nowrap
+                rounded-full
+                bg-gray-950
+                px-3 py-1.5
+                text-[11px]
+                font-bold
+                text-white
+                shadow-xl
+                sm:px-4
+                sm:py-2
+                sm:text-xs
+              "
+            >
+              Soba IA
+            </div>
 
           </div>
+
         </Link>
 
       </main>
