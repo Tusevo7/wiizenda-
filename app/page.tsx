@@ -64,72 +64,33 @@ export default function Home() {
         </section>
 
 
-        {/* =====================================================
-            PESQUISA
-        ====================================================== */}
-        <section
-          className="
-            relative z-10 mx-auto
-            max-w-4xl
-            px-4 pt-3
-            sm:-mt-8 sm:px-6 sm:pt-5
-          "
-        >
-
-          <div
-            className="
-              flex items-center gap-2
-              rounded-xl
-              border border-gray-200
-              bg-white
-              p-1.5
-              shadow-sm
-              sm:gap-3 sm:rounded-2xl sm:p-2
-            "
-          >
-
-            {/* ÍCONE */}
-            <div
-              className="
-                flex h-10 w-10 shrink-0
-                items-center justify-center
-                rounded-lg bg-gray-50
-                sm:h-11 sm:w-11 sm:rounded-xl
-              "
-            >
-              <Search
-                size={18}
-                className="text-gray-500"
-              />
-            </div>
-
-            {/* INPUT */}
-            <div className="min-w-0 flex-1">
-              <HomeSearch />
-            </div>
-
-            {/* BOTÃO */}
-            <Link
-              href="/explore"
-              aria-label="Pesquisar"
-              className="
-                flex h-10 w-10 shrink-0
-                items-center justify-center
-                rounded-lg
-                bg-orange-500
-                text-white
-                transition
-                hover:bg-orange-600
-                active:scale-95
-                sm:h-11 sm:w-11 sm:rounded-xl
-              "
-            >
-              <Search size={18} />
-            </Link>
-
-          </div>
-
-        </section>
+       {/* =====================================================
+    PESQUISA
+====================================================== */}
+<section
+  className="
+    relative z-10 mx-auto
+    max-w-4xl
+    px-4 pt-3
+    sm:-mt-8 sm:px-6 sm:pt-5
+  "
+>
+  <div
+    className="
+      flex items-center
+      rounded-xl
+      border border-gray-200
+      bg-white
+      shadow-sm
+      overflow-hidden
+      sm:rounded-2xl
+    "
+  >
+    <div className="flex-1 min-w-0">
+      <HomeSearch />
+    </div>
+  </div>
+</section>
 
 
         {/* =====================================================
