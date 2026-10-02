@@ -1,4 +1,3 @@
-
 import Link from 'next/link'
 import { Store } from 'lucide-react'
 
@@ -36,26 +35,28 @@ export default async function AgencyPage() {
     )
   }
 
-  const { data: agency, error: agencyError } =
-    await supabase
-      .from('agencies')
-      .select(
-        `
-          id,
-          name,
-          description,
-          city,
-          province,
-          status,
-          is_verified,
-          logo_url,
-          phone,
-          email,
-          address
-        `,
-      )
-      .eq('owner_id', user.id)
-      .maybeSingle()
+  const {
+    data: agency,
+    error: agencyError,
+  } = await supabase
+    .from('agencies')
+    .select(
+      `
+        id,
+        name,
+        description,
+        city,
+        province,
+        status,
+        is_verified,
+        logo_url,
+        phone,
+        email,
+        address
+      `,
+    )
+    .eq('owner_id', user.id)
+    .maybeSingle()
 
   if (agencyError) {
     console.error('Agency error:', agencyError)
@@ -84,6 +85,12 @@ export default async function AgencyPage() {
       </AppShell>
     )
   }
+
+  /*
+   * ========================================================
+   * EXPERIÊNCIAS
+   * ========================================================
+   */
 
   const {
     data: experiences,
@@ -118,11 +125,71 @@ export default async function AgencyPage() {
     )
   }
 
+  /*
+   * ========================================================
+   * LOCAIS PARA RELAXAR
+   * ========================================================
+   */
+
+  const {
+    data: relaxationPlaces,
+    error: relaxationPlacesError,
+  } = await supabase
+    .from('relaxation_places')
+    .select(
+      `
+        id,
+        agency_id,
+        name,
+        slug,
+        type,
+        description,
+        province,
+        city,
+        address,
+        latitude,
+        longitude,
+        cover_image_url,
+        gallery_urls,
+        price_from,
+        price_currency,
+        phone,
+        whatsapp,
+        email,
+        website,
+        instagram,
+        opening_hours,
+        amenities,
+        status,
+        rejection_reason,
+        is_featured,
+        created_at,
+        updated_at
+      `,
+    )
+    .eq('agency_id', agency.id)
+    .order('created_at', {
+      ascending: false,
+    })
+
+  if (relaxationPlacesError) {
+    console.error(
+      'Relaxation places error:',
+      relaxationPlacesError,
+    )
+  }
+
   const publishedCount =
     experiences?.filter(
       (experience) =>
         experience.status === 'published',
     ).length || 0
+
+  /*
+   * ========================================================
+   * RESERVAS
+   * ========================================================
+   */
 
   const {
     data: agencyBookings,
@@ -167,6 +234,12 @@ export default async function AgencyPage() {
       (booking) => booking.id,
     ) || []
 
+  /*
+   * ========================================================
+   * PAGAMENTOS
+   * ========================================================
+   */
+
   let paidPayments: {
     id: string
     booking_id: string
@@ -203,13 +276,22 @@ export default async function AgencyPage() {
     paidPayments = data || []
   }
 
-  const ticketsSold = paidPayments.length
+  const ticketsSold =
+    paidPayments.length
 
-  const revenue = paidPayments.reduce(
-    (total, payment) =>
-      total + Number(payment.amount || 0),
-    0,
-  )
+  const revenue =
+    paidPayments.reduce(
+      (total, payment) =>
+        total +
+        Number(payment.amount || 0),
+      0,
+    )
+
+  /*
+   * ========================================================
+   * DATAS / VENDAS
+   * ========================================================
+   */
 
   const now = new Date()
 
@@ -274,6 +356,12 @@ export default async function AgencyPage() {
       .map((booking) => booking.user_id)
       .filter(Boolean) || [],
   ).size
+
+  /*
+   * ========================================================
+   * AVALIAÇÕES
+   * ========================================================
+   */
 
   const experienceIds =
     experiences?.map(
@@ -341,8 +429,15 @@ export default async function AgencyPage() {
     }
   }
 
+  /*
+   * ========================================================
+   * GRÁFICO DE VENDAS
+   * ========================================================
+   */
+
   function getDateKey(date: Date) {
-    const parts = getLuandaParts(date)
+    const parts =
+      getLuandaParts(date)
 
     return `${parts.year}-${String(
       parts.month,
@@ -383,10 +478,17 @@ export default async function AgencyPage() {
 
       return {
         date: key,
-        amount: salesMap.get(key) || 0,
+        amount:
+          salesMap.get(key) || 0,
       }
     },
   )
+
+  /*
+   * ========================================================
+   * DADOS DO DASHBOARD
+   * ========================================================
+   */
 
   const dashboardData = {
     agency: {
@@ -403,11 +505,22 @@ export default async function AgencyPage() {
       address: agency.address,
     },
 
-    experiences: experiences || [],
+    experiences:
+      experiences || [],
+
+    /*
+     * Locais para Relaxar
+     *
+     * Cada agência vê apenas os
+     * locais pertencentes a ela.
+     */
+    relaxationPlaces:
+      relaxationPlaces || [],
 
     publishedCount,
 
-    bookings: agencyBookings || [],
+    bookings:
+      agencyBookings || [],
 
     paidPayments,
 
@@ -417,7 +530,8 @@ export default async function AgencyPage() {
 
     monthlyTickets,
 
-    uniqueCustomers: customers,
+    uniqueCustomers:
+      customers,
 
     averageRating,
 
@@ -425,12 +539,13 @@ export default async function AgencyPage() {
 
     reviews,
 
-    salesChart: salesByDay.map(
-      (item) => ({
-        date: item.date,
-        sales: item.amount,
-      }),
-    ),
+    salesChart:
+      salesByDay.map(
+        (item) => ({
+          date: item.date,
+          sales: item.amount,
+        }),
+      ),
   }
 
   return (

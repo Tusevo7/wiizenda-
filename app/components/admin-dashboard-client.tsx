@@ -39,6 +39,7 @@ import {
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import AdminAdvertisementsSection from '@/app/components/admin-advertisements-section'
+import AdminRelaxationPlaces from "@/app/components/admin-relaxation-places";
 
 type MenuKey =
   | 'overview'
@@ -56,6 +57,7 @@ type MenuKey =
   | 'admins'
   | 'settings'
   | 'advertisements'
+  | 'relaxation'
 
 type StatIcon = typeof Users
 
@@ -260,6 +262,11 @@ const menuSections = [
         label: 'Conteúdo',
         icon: FileText,
       },
+      {
+         key: 'relaxation' as MenuKey,
+         label: 'Locais para Relaxar',
+         icon: MapPin,
+        },
       {
         key: 'music' as MenuKey,
         label: 'Músicas',
@@ -4740,6 +4747,9 @@ export default function AdminDashboardClient({
   <ProvinciasSection provincias={provincias} />
 )}
 
+{activeMenu === 'relaxation' && (
+  <AdminRelaxationPlaces />
+)}
             {/* CONTEÚDO */}
 
             {activeMenu === 'content' && (
